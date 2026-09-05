@@ -1,6 +1,8 @@
 (() => {
   const HOST_ID = 'x-follow-review-ui-host';
   let raf = 0;
+  let observedRoot = null;
+  let rootObserver = null;
 
   function primaryRect() {
     const direct = document.querySelector('[data-testid="primaryColumn"]');
@@ -43,11 +45,21 @@
       return Math.round(primary.left);
     }
 
-    // X's desktop layout normally gives the left navigation roughly the first
-    // quarter of the viewport. This fallback is only used when primaryColumn
-    // temporarily reports a bad rectangle during SPA/layout transitions.
     const fallback = Math.max(navRight + 18, window.innerWidth * 0.235);
     return Math.round(Math.min(fallback, window.innerWidth * 0.34));
+  }
+
+  function connectRootObserver(root) {
+    if (!root || root === observedRoot) return;
+    rootObserver?.disconnect();
+    observedRoot = root;
+    rootObserver = new MutationObserver(schedule);
+    rootObserver.observe(root, {
+      attributes: true,
+      attributeFilter: ['data-open'],
+      childList: true,
+      subtree: false,
+    });
   }
 
   function apply() {
@@ -55,6 +67,7 @@
     const host = document.getElementById(HOST_ID);
     const root = host?.shadowRoot?.querySelector('.xfr-shell');
     if (!root) return;
+    connectRootObserver(root);
 
     const left = workspaceLeft();
     const primary = primaryRect();
@@ -73,12 +86,10 @@
     raf = requestAnimationFrame(apply);
   }
 
-  const observer = new MutationObserver(schedule);
-  observer.observe(document.documentElement, {
+  const pageObserver = new MutationObserver(schedule);
+  pageObserver.observe(document.documentElement, {
     childList: true,
     subtree: true,
-    attributes: true,
-    attributeFilter: ['data-open', 'style'],
   });
   window.addEventListener('resize', schedule, { passive: true });
   schedule();
