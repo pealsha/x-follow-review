@@ -67,7 +67,9 @@
   window.fetch = async function(input, init) {
     const response = await nativeFetch(input, init);
     if (operationFromUrl(input) === 'ListsManagementPageTimeline') {
-      response.clone().json().then(collectLists).catch(() => {});
+      try {
+        collectLists(await response.clone().json());
+      } catch {}
     }
     return response;
   };
