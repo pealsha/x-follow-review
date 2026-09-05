@@ -80,6 +80,26 @@
       padding-bottom: 18px;
     }
 
+    /* Profile identity behaves like X's own profile links. */
+    a.xfr-name,
+    a.xfr-handle {
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    a.xfr-name {
+      color: var(--xfr-fg);
+    }
+
+    a.xfr-handle {
+      color: var(--xfr-muted);
+    }
+
+    a.xfr-name:hover,
+    a.xfr-handle:hover {
+      text-decoration: underline;
+    }
+
     /* Sync internals are development information, not part of the review UX. */
     .xfr-status {
       display: none !important;
@@ -116,6 +136,41 @@
     }
   }
 
+  function polishProfile(shadow) {
+    const bio = shadow.querySelector('.xfr-bio');
+    if (bio && (!bio.textContent?.trim() || bio.textContent.trim() === 'プロフィール文なし')) {
+      bio.remove();
+    }
+
+    const profileButton = Array.from(shadow.querySelectorAll('.xfr-profile-actions button'))
+      .find((button) => (button.textContent || '').trim().startsWith('プロフィール'));
+    profileButton?.remove();
+
+    const handleNode = shadow.querySelector('.xfr-handle');
+    const username = (handleNode?.textContent || '').trim().replace(/^@/, '');
+    if (!username) return;
+    const href = `${location.origin}/${username}`;
+
+    for (const selector of ['.xfr-name', '.xfr-handle']) {
+      const node = shadow.querySelector(selector);
+      if (!node) continue;
+      if (node instanceof HTMLAnchorElement) {
+        node.href = href;
+        node.target = '_blank';
+        node.rel = 'noopener';
+        continue;
+      }
+      const link = document.createElement('a');
+      link.className = node.className;
+      link.textContent = node.textContent;
+      link.href = href;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.title = `@${username} のプロフィールを開く`;
+      node.replaceWith(link);
+    }
+  }
+
   function bindFollowingScroll(shadow) {
     const list = shadow.querySelector('.xfr-user-list');
     if (list && list !== boundList) {
@@ -146,6 +201,7 @@
 
   function polish(shadow) {
     removeSyncSection(shadow);
+    polishProfile(shadow);
     bindFollowingScroll(shadow);
   }
 
