@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "X Follow Review Probe",
+  "version": "0.1.0",
+  "description": "Observe X.com GraphQL operations used by Following, Bookmarks, Media and Lists without storing auth secrets.",
+  "permissions": ["storage", "webRequest"],
+  "host_permissions": [
+    "https://x.com/*",
+    "https://twitter.com/*",
+    "https://api.x.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Open X Follow Review Probe"
+  },
+  "options_page": "probe.html",
+  "content_scripts": [
+    {
+      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "js": ["page-hook.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "js": ["bridge.js"],
+      "run_at": "document_start",
+      "world": "ISOLATED"
+    }
+  ]
+}
