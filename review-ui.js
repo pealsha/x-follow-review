@@ -17,45 +17,58 @@
   let lastThemeSignature = '';
 
   const css = `
-    :host { all: initial; color-scheme: var(--xfr-color-scheme, light); }
+    :host {
+      all: initial;
+      color-scheme: var(--xfr-color-scheme, light);
+    }
     * { box-sizing: border-box; }
+    button, a { font: inherit; }
+
     .xfr-shell {
       position: fixed;
-      inset: 0 auto 0 0;
+      top: 0;
+      bottom: 0;
       width: 600px;
       pointer-events: none;
       z-index: 2147483000;
       color: var(--xfr-fg, #0f1419);
-      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font: 14px/1.42 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
+
     .xfr-toggle {
       position: absolute;
-      top: 10px;
+      top: 11px;
       right: 12px;
       pointer-events: auto;
-      border: 1px solid var(--xfr-border, #cfd9de);
+      min-height: 34px;
+      border: 1px solid var(--xfr-border-strong, #cfd9de);
       border-radius: 999px;
       background: var(--xfr-elevated, rgba(255,255,255,.96));
       color: var(--xfr-fg, #0f1419);
-      padding: 7px 12px;
+      padding: 6px 13px;
       font-weight: 700;
       cursor: pointer;
-      box-shadow: var(--xfr-shadow, 0 2px 12px rgba(0,0,0,.12));
+      box-shadow: var(--xfr-shadow, 0 2px 10px rgba(0,0,0,.10));
       backdrop-filter: blur(12px);
     }
+    .xfr-toggle:hover { background: var(--xfr-hover, #f7f9f9); }
+
     .xfr-panel {
       position: absolute;
       inset: 0;
       pointer-events: auto;
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
       background: var(--xfr-bg, #fff);
       border-left: 1px solid var(--xfr-border, #eff3f4);
       border-right: 1px solid var(--xfr-border, #eff3f4);
-      display: none;
-      overflow: hidden;
     }
-    .xfr-shell[data-open="true"] .xfr-panel { display: flex; flex-direction: column; }
+    .xfr-shell[data-open="true"] .xfr-panel { display: flex; }
     .xfr-shell[data-open="true"] .xfr-toggle { display: none; }
+
     .xfr-header {
+      flex: none;
       min-height: 54px;
       display: flex;
       align-items: center;
@@ -65,68 +78,209 @@
       background: var(--xfr-elevated, #fff);
       backdrop-filter: blur(12px);
     }
-    .xfr-title { font-size: 17px; font-weight: 800; flex: 1; }
-    .xfr-progress { color: var(--xfr-muted, #536471); font-size: 13px; }
+    .xfr-title { font-size: 18px; font-weight: 800; flex: 1; letter-spacing: -.01em; }
+    .xfr-progress { color: var(--xfr-muted, #536471); font-size: 13px; white-space: nowrap; }
+
     button {
       appearance: none;
-      border: 1px solid var(--xfr-border, #cfd9de);
+      border: 1px solid var(--xfr-border-strong, #cfd9de);
       border-radius: 999px;
       background: transparent;
       color: inherit;
       padding: 7px 11px;
-      font: inherit;
       font-weight: 700;
       cursor: pointer;
     }
     button:hover { background: var(--xfr-hover, #f7f9f9); }
     button:focus-visible { outline: 2px solid #1d9bf0; outline-offset: 2px; }
-    .xfr-body { flex: 1; overflow: auto; padding: 16px; scrollbar-color: var(--xfr-scroll-thumb) transparent; }
-    .xfr-card {
-      border: 1px solid var(--xfr-border, #eff3f4);
-      border-radius: 18px;
-      overflow: hidden;
-      background: var(--xfr-card, #fff);
+
+    .xfr-body {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-color: var(--xfr-scroll-thumb, #cfd9de) transparent;
+      background: var(--xfr-bg, #fff);
     }
-    .xfr-profile { display: grid; grid-template-columns: 64px 1fr; gap: 12px; padding: 16px; }
-    .xfr-avatar { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; background: var(--xfr-placeholder-bg, rgba(127,127,127,.15)); }
-    .xfr-name { font-size: 18px; font-weight: 800; margin-top: 2px; }
-    .xfr-handle { color: var(--xfr-muted, #536471); margin: 1px 0 7px; }
-    .xfr-bio { white-space: pre-wrap; }
-    .xfr-section { padding: 14px 16px; border-top: 1px solid var(--xfr-border, #eff3f4); }
-    .xfr-section-title { font-weight: 800; margin-bottom: 8px; }
-    .xfr-muted { color: var(--xfr-muted, #536471); }
-    .xfr-placeholder-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
-    .xfr-placeholder {
-      aspect-ratio: 1;
-      border-radius: 10px;
-      background: var(--xfr-placeholder-bg, #f7f9f9);
+
+    .xfr-profile {
+      display: grid;
+      grid-template-columns: 48px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: start;
+      padding: 14px 16px 12px;
+      border-bottom: 1px solid var(--xfr-border, #eff3f4);
+    }
+    .xfr-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: var(--xfr-placeholder-bg, #eff3f4);
+    }
+    .xfr-identity { min-width: 0; }
+    .xfr-name-row { display: flex; min-width: 0; align-items: baseline; gap: 7px; }
+    .xfr-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 16px;
+      font-weight: 800;
+    }
+    .xfr-handle {
+      flex: none;
+      color: var(--xfr-muted, #536471);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 42%;
+    }
+    .xfr-bio {
+      margin-top: 4px;
+      white-space: pre-wrap;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .xfr-profile-link {
+      width: 34px;
+      height: 34px;
+      padding: 0;
       display: grid;
       place-items: center;
+      font-size: 16px;
+    }
+
+    .xfr-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--xfr-border, #eff3f4);
+    }
+    .xfr-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      background: var(--xfr-subtle, #f7f9f9);
+      color: var(--xfr-muted, #536471);
+      font-size: 13px;
+    }
+    .xfr-chip-strong { color: var(--xfr-fg, #0f1419); font-weight: 700; }
+
+    .xfr-section {
+      padding: 14px 16px 16px;
+      border-bottom: 1px solid var(--xfr-border, #eff3f4);
+    }
+    .xfr-section-head {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .xfr-section-title { font-size: 16px; font-weight: 800; }
+    .xfr-section-note { color: var(--xfr-muted, #536471); font-size: 12px; }
+    .xfr-muted { color: var(--xfr-muted, #536471); }
+
+    .xfr-media-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 3px;
+      overflow: hidden;
+      border-radius: 14px;
+      background: var(--xfr-border, #eff3f4);
+    }
+    .xfr-media-placeholder {
+      position: relative;
+      aspect-ratio: 1;
+      display: grid;
+      place-items: center;
+      background: var(--xfr-placeholder-bg, #eff3f4);
       color: var(--xfr-muted, #536471);
       font-size: 11px;
     }
-    .xfr-actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 14px; }
-    .xfr-actions button { border-radius: 12px; min-height: 46px; }
+    .xfr-media-placeholder:first-child::after {
+      content: '接続待ち';
+      position: absolute;
+      inset: auto 6px 6px;
+      text-align: center;
+    }
+
+    .xfr-bookmarks-placeholder {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 7px;
+    }
+    .xfr-bookmark-tile {
+      aspect-ratio: 4 / 3;
+      border-radius: 12px;
+      background: var(--xfr-placeholder-bg, #eff3f4);
+      border: 1px solid var(--xfr-border, #eff3f4);
+    }
+
+    .xfr-utils {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      padding: 12px 16px 18px;
+    }
+    .xfr-utils button { font-size: 12px; padding: 6px 10px; color: var(--xfr-muted, #536471); }
+    .xfr-status {
+      width: 100%;
+      color: var(--xfr-muted, #536471);
+      font-size: 12px;
+    }
+
+    .xfr-footer {
+      flex: none;
+      display: grid;
+      grid-template-columns: auto 1fr 1fr 1fr auto;
+      gap: 7px;
+      align-items: center;
+      padding: 10px 12px max(10px, env(safe-area-inset-bottom));
+      border-top: 1px solid var(--xfr-border, #eff3f4);
+      background: var(--xfr-elevated, #fff);
+      box-shadow: 0 -8px 22px var(--xfr-footer-shadow, rgba(0,0,0,.04));
+      backdrop-filter: blur(14px);
+    }
+    .xfr-footer button { min-height: 44px; border-radius: 12px; }
+    .xfr-nav { width: 44px; padding: 0; font-size: 17px; }
+    .xfr-action { position: relative; }
     .xfr-keep { border-color: var(--xfr-keep, rgba(0,160,80,.55)); }
     .xfr-later { border-color: var(--xfr-later, rgba(180,145,0,.55)); }
     .xfr-remove { border-color: var(--xfr-remove, rgba(220,40,70,.55)); }
-    .xfr-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-    .xfr-status {
-      margin-top: 10px;
-      padding: 10px 12px;
-      border-radius: 12px;
-      background: var(--xfr-subtle, #f7f9f9);
+    .xfr-action[data-selected="true"] { background: var(--xfr-selected, rgba(29,155,240,.12)); }
+    .xfr-kbd {
+      display: inline-block;
+      margin-left: 4px;
+      padding: 0 4px;
+      border: 1px solid var(--xfr-border-strong, #cfd9de);
+      border-radius: 4px;
+      color: var(--xfr-muted, #536471);
+      font-size: 10px;
+      line-height: 16px;
+      vertical-align: 1px;
+    }
+
+    .xfr-empty {
+      min-height: 55vh;
+      display: grid;
+      place-items: center;
+      padding: 30px;
+      text-align: center;
       color: var(--xfr-muted, #536471);
     }
-    .xfr-empty { padding: 28px 18px; text-align: center; color: var(--xfr-muted, #536471); }
-    .xfr-kbd {
-      font-size: 11px;
-      padding: 1px 5px;
-      margin-left: 5px;
-      border: 1px solid var(--xfr-border, #cfd9de);
-      border-radius: 5px;
-      color: var(--xfr-muted, #536471);
-      background: var(--xfr-subtle, transparent);
+    .xfr-empty strong { display: block; margin-bottom: 6px; color: var(--xfr-fg, #0f1419); font-size: 16px; }
+
+    @media (max-width: 520px) {
+      .xfr-footer { grid-template-columns: 36px 1fr 1fr 1fr 36px; gap: 4px; padding-inline: 6px; }
+      .xfr-nav { width: 36px; }
+      .xfr-kbd { display: none; }
+      .xfr-action { padding-inline: 5px; font-size: 12px; }
     }
   `;
 
@@ -134,8 +288,41 @@
     return ROUTE_RE.test(location.pathname);
   }
 
+  function usableColumnRect(node) {
+    if (!node) return null;
+    const rect = node.getBoundingClientRect();
+    if (rect.width < 480 || rect.width > 760) return null;
+    if (rect.right <= 0 || rect.left >= window.innerWidth) return null;
+    return rect;
+  }
+
+  function columnFromTimeline() {
+    const seed = document.querySelector('[data-testid="UserCell"]') || document.querySelector('[role="tablist"]');
+    if (!seed) return null;
+
+    let node = seed;
+    let best = null;
+    for (let depth = 0; node && node !== document.documentElement && depth < 14; depth += 1, node = node.parentElement) {
+      const rect = usableColumnRect(node);
+      if (!rect) continue;
+      if (rect.height < Math.min(500, window.innerHeight * 0.6)) continue;
+      best = node;
+    }
+    return best;
+  }
+
   function primaryColumn() {
-    return document.querySelector('[data-testid="primaryColumn"]') || document.querySelector('main[role="main"]');
+    const direct = document.querySelector('[data-testid="primaryColumn"]');
+    if (usableColumnRect(direct)) return direct;
+
+    const timelineColumn = columnFromTimeline();
+    if (timelineColumn) return timelineColumn;
+
+    const main = document.querySelector('main[role="main"]');
+    if (!main) return null;
+
+    const descendants = Array.from(main.querySelectorAll(':scope > div, :scope > div > div'));
+    return descendants.find((node) => usableColumnRect(node)) || (usableColumnRect(main) ? main : null);
   }
 
   function parseRgb(value) {
@@ -150,67 +337,84 @@
     };
   }
 
-  function visibleBackground() {
-    const candidates = [
-      primaryColumn(),
-      document.querySelector('main[role="main"]'),
-      document.body,
-      document.documentElement,
-    ].filter(Boolean);
-
-    for (const node of candidates) {
-      const value = getComputedStyle(node).backgroundColor;
-      const rgb = parseRgb(value);
-      if (rgb && rgb.a > 0.05) return { value, rgb, node };
-    }
-
-    return { value: 'rgb(255, 255, 255)', rgb: { r: 255, g: 255, b: 255, a: 1 }, node: document.body };
-  }
-
   function luminance({ r, g, b }) {
     return (r * 299 + g * 587 + b * 114) / 1000;
   }
 
+  function opaqueBackground(node) {
+    let current = node;
+    for (let depth = 0; current && depth < 8; depth += 1, current = current.parentElement) {
+      const value = getComputedStyle(current).backgroundColor;
+      const rgb = parseRgb(value);
+      if (rgb && rgb.a > 0.08) return { value, rgb };
+    }
+    return null;
+  }
+
+  function detectTheme() {
+    const column = primaryColumn();
+    const candidates = [column, document.body, document.documentElement].filter(Boolean);
+    let background = null;
+
+    for (const candidate of candidates) {
+      background = opaqueBackground(candidate);
+      if (background) break;
+    }
+
+    if (!background) {
+      background = { value: 'rgb(255, 255, 255)', rgb: { r: 255, g: 255, b: 255, a: 1 } };
+    }
+
+    const level = luminance(background.rgb);
+    const dark = level < 128;
+    const dim = dark && level > 12;
+    return { ...background, dark, dim };
+  }
+
   function applyTheme() {
     if (!host) return;
-
-    const background = visibleBackground();
-    const bg = background.value;
-    const fgSource = background.node || document.body;
-    const computedFg = fgSource ? getComputedStyle(fgSource).color : '';
-    const dark = luminance(background.rgb) < 128;
-    const dim = dark && luminance(background.rgb) > 12;
-    const fg = computedFg && parseRgb(computedFg) ? computedFg : (dark ? 'rgb(231, 233, 234)' : 'rgb(15, 20, 25)');
-    const signature = `${bg}|${fg}|${dark}|${dim}`;
+    const theme = detectTheme();
+    const signature = `${theme.value}|${theme.dark}|${theme.dim}`;
     if (signature === lastThemeSignature) return;
     lastThemeSignature = signature;
 
-    host.style.setProperty('--xfr-color-scheme', dark ? 'dark' : 'light');
-    host.style.setProperty('--xfr-bg', bg);
-    host.style.setProperty('--xfr-card', bg);
-    host.style.setProperty('--xfr-fg', fg);
+    host.style.setProperty('--xfr-color-scheme', theme.dark ? 'dark' : 'light');
+    host.style.setProperty('--xfr-bg', theme.value);
 
-    if (dark) {
-      host.style.setProperty('--xfr-muted', dim ? '#8899a6' : '#71767b');
-      host.style.setProperty('--xfr-border', dim ? '#38444d' : '#2f3336');
+    if (theme.dark) {
+      const dimBg = '#15202b';
+      const blackBg = '#000000';
+      const normalizedBg = theme.dim ? dimBg : blackBg;
+      host.style.setProperty('--xfr-bg', normalizedBg);
+      host.style.setProperty('--xfr-elevated', theme.dim ? 'rgba(21,32,43,.96)' : 'rgba(0,0,0,.96)');
+      host.style.setProperty('--xfr-fg', '#e7e9ea');
+      host.style.setProperty('--xfr-muted', theme.dim ? '#8899a6' : '#71767b');
+      host.style.setProperty('--xfr-border', theme.dim ? '#38444d' : '#2f3336');
+      host.style.setProperty('--xfr-border-strong', theme.dim ? '#536471' : '#536471');
       host.style.setProperty('--xfr-hover', 'rgba(239,243,244,.10)');
-      host.style.setProperty('--xfr-subtle', dim ? 'rgba(255,255,255,.055)' : '#16181c');
-      host.style.setProperty('--xfr-placeholder-bg', dim ? 'rgba(255,255,255,.07)' : '#202327');
-      host.style.setProperty('--xfr-elevated', dim ? 'rgba(21,32,43,.96)' : 'rgba(0,0,0,.94)');
-      host.style.setProperty('--xfr-shadow', '0 4px 20px rgba(0,0,0,.45)');
-      host.style.setProperty('--xfr-scroll-thumb', dim ? '#536471' : '#333639');
+      host.style.setProperty('--xfr-subtle', theme.dim ? 'rgba(255,255,255,.055)' : '#16181c');
+      host.style.setProperty('--xfr-placeholder-bg', theme.dim ? '#22303c' : '#202327');
+      host.style.setProperty('--xfr-scroll-thumb', theme.dim ? '#536471' : '#333639');
+      host.style.setProperty('--xfr-shadow', '0 3px 18px rgba(0,0,0,.38)');
+      host.style.setProperty('--xfr-footer-shadow', 'rgba(0,0,0,.28)');
+      host.style.setProperty('--xfr-selected', 'rgba(29,155,240,.16)');
       host.style.setProperty('--xfr-keep', 'rgba(0,186,124,.72)');
       host.style.setProperty('--xfr-later', 'rgba(255,212,0,.62)');
       host.style.setProperty('--xfr-remove', 'rgba(249,24,128,.65)');
     } else {
+      host.style.setProperty('--xfr-bg', '#ffffff');
+      host.style.setProperty('--xfr-elevated', 'rgba(255,255,255,.96)');
+      host.style.setProperty('--xfr-fg', '#0f1419');
       host.style.setProperty('--xfr-muted', '#536471');
       host.style.setProperty('--xfr-border', '#eff3f4');
+      host.style.setProperty('--xfr-border-strong', '#cfd9de');
       host.style.setProperty('--xfr-hover', '#f7f9f9');
       host.style.setProperty('--xfr-subtle', '#f7f9f9');
       host.style.setProperty('--xfr-placeholder-bg', '#eff3f4');
-      host.style.setProperty('--xfr-elevated', 'rgba(255,255,255,.96)');
-      host.style.setProperty('--xfr-shadow', '0 2px 12px rgba(0,0,0,.12)');
       host.style.setProperty('--xfr-scroll-thumb', '#cfd9de');
+      host.style.setProperty('--xfr-shadow', '0 2px 10px rgba(0,0,0,.10)');
+      host.style.setProperty('--xfr-footer-shadow', 'rgba(0,0,0,.05)');
+      host.style.setProperty('--xfr-selected', 'rgba(29,155,240,.10)');
       host.style.setProperty('--xfr-keep', 'rgba(0,160,80,.55)');
       host.style.setProperty('--xfr-later', 'rgba(180,145,0,.55)');
       host.style.setProperty('--xfr-remove', 'rgba(220,40,70,.55)');
@@ -219,7 +423,7 @@
 
   function scheduleTheme() {
     clearTimeout(themeTimer);
-    themeTimer = setTimeout(applyTheme, 80);
+    themeTimer = setTimeout(applyTheme, 90);
   }
 
   function positionHost() {
@@ -227,8 +431,35 @@
     const primary = primaryColumn();
     if (!primary) return;
     const rect = primary.getBoundingClientRect();
-    host.style.left = `${Math.max(0, rect.left)}px`;
-    host.style.width = `${Math.max(360, rect.width)}px`;
+    host.style.left = `${Math.round(Math.max(0, rect.left))}px`;
+    host.style.width = `${Math.round(Math.min(window.innerWidth - Math.max(0, rect.left), rect.width))}px`;
+  }
+
+  function extensionAlive() {
+    try {
+      return Boolean(chrome.runtime?.id);
+    } catch {
+      return false;
+    }
+  }
+
+  async function storageGet(key) {
+    if (!extensionAlive()) return {};
+    try {
+      return await chrome.storage.local.get(key);
+    } catch {
+      return {};
+    }
+  }
+
+  async function storageSet(value) {
+    if (!extensionAlive()) return false;
+    try {
+      await chrome.storage.local.set(value);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   function mount() {
@@ -249,8 +480,8 @@
 
     document.documentElement.append(host);
     lastThemeSignature = '';
-    applyTheme();
     positionHost();
+    applyTheme();
     render();
     scanVisibleUsers();
   }
@@ -314,18 +545,14 @@
   }
 
   async function loadDecisions() {
-    try {
-      const stored = await chrome.storage.local.get(DECISION_KEY);
-      decisions = stored[DECISION_KEY] && typeof stored[DECISION_KEY] === 'object' ? stored[DECISION_KEY] : {};
-    } catch {
-      decisions = {};
-    }
+    const stored = await storageGet(DECISION_KEY);
+    decisions = stored[DECISION_KEY] && typeof stored[DECISION_KEY] === 'object' ? stored[DECISION_KEY] : {};
   }
 
   async function saveDecision(user, decision) {
     if (!user) return;
     decisions[user.key] = { decision, reviewedAt: Date.now(), handle: user.handle, name: user.name };
-    await chrome.storage.local.set({ [DECISION_KEY]: decisions });
+    await storageSet({ [DECISION_KEY]: decisions });
     goToNextUndecided();
   }
 
@@ -339,8 +566,7 @@
         return;
       }
     }
-    currentIndex = Math.min(currentIndex + 1, users.length - 1);
-    render();
+    move(1);
   }
 
   function move(delta) {
@@ -363,16 +589,91 @@
     return node;
   }
 
-  function renderSection(title, message, placeholders = false) {
+  function actionButton(label, key, decision, user, className) {
+    const node = button(label, () => void saveDecision(user, decision), `xfr-action ${className}`);
+    node.dataset.selected = decisions[user?.key]?.decision === decision ? 'true' : 'false';
+    node.append(el('span', 'xfr-kbd', key));
+    return node;
+  }
+
+  function renderMediaSection() {
     const section = el('section', 'xfr-section');
-    section.append(el('div', 'xfr-section-title', title));
-    if (placeholders) {
-      const grid = el('div', 'xfr-placeholder-grid');
-      for (let i = 0; i < 4; i += 1) grid.append(el('div', 'xfr-placeholder', i === 0 ? '接続待ち' : ''));
-      section.append(grid);
-    }
-    section.append(el('div', 'xfr-muted', message));
+    const head = el('div', 'xfr-section-head');
+    head.append(el('div', 'xfr-section-title', '最近の画像・動画'));
+    head.append(el('div', 'xfr-section-note', 'UserMedia 接続待ち'));
+    section.append(head);
+
+    const grid = el('div', 'xfr-media-grid');
+    for (let i = 0; i < 6; i += 1) grid.append(el('div', 'xfr-media-placeholder'));
+    section.append(grid);
     return section;
+  }
+
+  function renderBookmarkSection() {
+    const section = el('section', 'xfr-section');
+    const head = el('div', 'xfr-section-head');
+    head.append(el('div', 'xfr-section-title', '自分がブックマークした投稿'));
+    head.append(el('div', 'xfr-section-note', 'Bookmarks 接続待ち'));
+    section.append(head);
+
+    const tiles = el('div', 'xfr-bookmarks-placeholder');
+    for (let i = 0; i < 3; i += 1) tiles.append(el('div', 'xfr-bookmark-tile'));
+    section.append(tiles);
+    return section;
+  }
+
+  function renderUserBody(user) {
+    const frag = document.createDocumentFragment();
+
+    const profile = el('section', 'xfr-profile');
+    const avatar = el('img', 'xfr-avatar');
+    avatar.src = user.avatarUrl;
+    avatar.alt = '';
+    profile.append(avatar);
+
+    const identity = el('div', 'xfr-identity');
+    const nameRow = el('div', 'xfr-name-row');
+    nameRow.append(el('div', 'xfr-name', user.name));
+    nameRow.append(el('div', 'xfr-handle', user.handle));
+    identity.append(nameRow);
+    identity.append(el('div', 'xfr-bio', user.bio || 'プロフィール文なし'));
+    profile.append(identity);
+
+    const openProfile = button('↗', () => window.open(user.profileUrl, '_blank', 'noopener'), 'xfr-profile-link');
+    openProfile.title = 'プロフィールを開く';
+    profile.append(openProfile);
+    frag.append(profile);
+
+    const summary = el('div', 'xfr-summary');
+    summary.append(el('span', 'xfr-chip xfr-chip-strong', 'リスト  —'));
+    summary.append(el('span', 'xfr-chip xfr-chip-strong', '★ ブックマーク  —'));
+    const previous = decisions[user.key]?.decision;
+    if (previous) {
+      const labels = { keep: '残す', later: '保留', remove: '解除候補' };
+      summary.append(el('span', 'xfr-chip', `前回: ${labels[previous] || previous}`));
+    }
+    frag.append(summary);
+
+    frag.append(renderMediaSection());
+    frag.append(renderBookmarkSection());
+
+    const utils = el('div', 'xfr-utils');
+    utils.append(button('表示中を再スキャン', () => {
+      scanVisibleUsers();
+      render();
+    }));
+    utils.append(button('さらに読み込む', () => {
+      window.scrollBy({ top: Math.max(window.innerHeight * 1.6, 1000), behavior: 'smooth' });
+      setTimeout(() => {
+        scanVisibleUsers();
+        render();
+      }, 1400);
+    }));
+    const reviewedCount = users.filter((u) => decisions[u.key]).length;
+    utils.append(el('div', 'xfr-status', `取得 ${users.length}人 / 判定済み ${reviewedCount}人。現在は判定のみ保存し、実際のフォロー解除は行いません。`));
+    frag.append(utils);
+
+    return frag;
   }
 
   function render() {
@@ -384,12 +685,14 @@
       await loadDecisions();
       scanVisibleUsers();
       reviewMode = true;
+      positionHost();
       applyTheme();
       render();
     }, 'xfr-toggle');
     root.append(toggle);
 
     const panel = el('div', 'xfr-panel');
+
     const header = el('header', 'xfr-header');
     header.append(el('div', 'xfr-title', 'Follow Review'));
     header.append(el('div', 'xfr-progress', users.length ? `${currentIndex + 1} / ${users.length}` : '0 users'));
@@ -401,69 +704,32 @@
 
     const body = el('main', 'xfr-body');
     const user = users[currentIndex];
-
-    if (!user) {
-      const empty = el('div', 'xfr-empty');
-      empty.append(el('div', '', 'まだフォロー相手を取得できていません。'));
-      empty.append(el('div', 'xfr-muted', '通常表示に戻ってフォロー一覧を少しスクロールしてから、再度Review Modeを開いてください。'));
-      body.append(empty);
+    if (user) {
+      body.append(renderUserBody(user));
     } else {
-      const card = el('article', 'xfr-card');
-      const profile = el('div', 'xfr-profile');
-      const avatar = el('img', 'xfr-avatar');
-      avatar.src = user.avatarUrl;
-      avatar.alt = '';
-      profile.append(avatar);
-      const profileText = el('div');
-      profileText.append(el('div', 'xfr-name', user.name));
-      profileText.append(el('div', 'xfr-handle', user.handle));
-      profileText.append(el('div', 'xfr-bio', user.bio || 'プロフィール文なし'));
-      const profileButton = button('プロフィールを開く', () => window.open(user.profileUrl, '_blank', 'noopener'));
-      profileButton.style.marginTop = '10px';
-      profileText.append(profileButton);
-      profile.append(profileText);
-      card.append(profile);
-
-      card.append(renderSection('所属リスト', 'List系GraphQLを接続すると、ここに「絵師」「VRC」など自分のリスト所属を表示します。'));
-      card.append(renderSection('最近の画像・動画', 'UserMediaを接続すると、直近のメディア投稿をここに並べます。', true));
-      card.append(renderSection('自分がブックマークした投稿', 'Bookmarksを同期すると、この人の投稿だけを逆引きしてここに表示します。'));
-
-      const actionWrap = el('div', 'xfr-section');
-      const previous = decisions[user.key]?.decision;
-      if (previous) actionWrap.append(el('div', 'xfr-status', `保存済み判定: ${previous}`));
-      const actions = el('div', 'xfr-actions');
-      const keep = button('残す', () => saveDecision(user, 'keep'), 'xfr-keep');
-      keep.append(el('span', 'xfr-kbd', 'K'));
-      const later = button('保留', () => saveDecision(user, 'later'), 'xfr-later');
-      later.append(el('span', 'xfr-kbd', 'S'));
-      const remove = button('解除候補', () => saveDecision(user, 'remove'), 'xfr-remove');
-      remove.append(el('span', 'xfr-kbd', 'D'));
-      actions.append(keep, later, remove);
-      actionWrap.append(actions);
-      card.append(actionWrap);
-      body.append(card);
+      const empty = el('div', 'xfr-empty');
+      const message = el('div');
+      message.append(el('strong', '', 'フォロー相手をまだ取得できていません'));
+      message.append(el('div', '', '「通常表示」に戻ってフォロー一覧を少しスクロールしてから、Review Modeを開き直してください。'));
+      empty.append(message);
+      body.append(empty);
     }
-
-    const toolbar = el('div', 'xfr-toolbar');
-    toolbar.append(button('← 前', () => move(-1)));
-    toolbar.append(button('次 →', () => move(1)));
-    toolbar.append(button('表示中を再スキャン', () => {
-      scanVisibleUsers();
-      render();
-    }));
-    toolbar.append(button('さらに読み込む', () => {
-      window.scrollBy({ top: Math.max(window.innerHeight * 1.5, 900), behavior: 'smooth' });
-      setTimeout(() => {
-        scanVisibleUsers();
-        render();
-      }, 1400);
-    }));
-    body.append(toolbar);
-
-    const reviewedCount = users.filter((u) => decisions[u.key]).length;
-    body.append(el('div', 'xfr-status', `取得 ${users.length}人 / 判定済み ${reviewedCount}人。現段階ではフォロー解除は実行せず、判定だけをchrome.storage.localへ保存します。`));
-
     panel.append(body);
+
+    const footer = el('footer', 'xfr-footer');
+    footer.append(button('←', () => move(-1), 'xfr-nav'));
+    if (user) {
+      footer.append(actionButton('残す', 'K', 'keep', user, 'xfr-keep'));
+      footer.append(actionButton('保留', 'S', 'later', user, 'xfr-later'));
+      footer.append(actionButton('解除候補', 'D', 'remove', user, 'xfr-remove'));
+    } else {
+      footer.append(button('残す', () => {}, 'xfr-action'));
+      footer.append(button('保留', () => {}, 'xfr-action'));
+      footer.append(button('解除候補', () => {}, 'xfr-action'));
+    }
+    footer.append(button('→', () => move(1), 'xfr-nav'));
+    panel.append(footer);
+
     root.append(panel);
   }
 
@@ -471,7 +737,7 @@
     clearTimeout(scanTimer);
     scanTimer = setTimeout(() => {
       if (isFollowingRoute()) scanVisibleUsers();
-    }, 250);
+    }, 280);
   }
 
   window.addEventListener('resize', () => {
@@ -483,6 +749,7 @@
     if (!reviewMode || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
     const target = event.target;
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+
     const user = users[currentIndex];
     const key = event.key.toLowerCase();
     if (key === 'k') void saveDecision(user, 'keep');
@@ -490,7 +757,10 @@
     else if (key === 'd') void saveDecision(user, 'remove');
     else if (event.key === 'ArrowLeft') move(-1);
     else if (event.key === 'ArrowRight') move(1);
-    else return;
+    else if (event.key === 'Escape') {
+      reviewMode = false;
+      render();
+    } else return;
     event.preventDefault();
   }, true);
 
@@ -501,28 +771,24 @@
         setTimeout(() => {
           mount();
           positionHost();
+          scheduleTheme();
           scanVisibleUsers();
-          applyTheme();
-        }, 100);
+        }, 120);
       } else {
         unmount();
       }
       return;
     }
+
     if (isFollowingRoute()) {
       if (!host) mount();
       positionHost();
-      scheduleScan();
       scheduleTheme();
+      scheduleScan();
     }
   });
 
-  observer.observe(document.documentElement, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['class', 'style'],
-  });
+  observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
 
   void loadDecisions().then(() => {
     if (isFollowingRoute()) mount();
