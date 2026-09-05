@@ -1,12 +1,16 @@
 (() => {
   const HOST_ID = 'x-follow-review-ui-host';
   const STYLE_ID = 'xfr-ui-polish-style';
+  const BOOKMARKS_KEY = 'xFollowReview.bookmarksByAuthor.v1';
+  const LIST_MEMBERSHIP_KEY = 'xFollowReview.listMemberships.v1';
   let currentShadow = null;
   let observer = null;
   let boundList = null;
   let boundSearch = null;
   let listScrollTop = 0;
   let lastSearchValue = '';
+  let bookmarkCounts = {};
+  let membershipCounts = {};
 
   const css = `
     /* The workspace itself never scrolls the X page. Each review pane owns its
@@ -199,10 +203,48 @@
     }
   }
 
+  function ensureCountChip(meta, kind, text) {
+    const prefix = kind === 'bookmark' ? '★' : 'リスト';
+    let chip = Array.from(meta.querySelectorAll('.xfr-mini-chip'))
+      .find((node) => (node.textContent || '').trim().startsWith(prefix));
+    if (!chip) {
+      chip = document.createElement('span');
+      chip.className = 'xfr-mini-chip';
+      meta.append(chip);
+    }
+    if (chip.textContent !== text) chip.textContent = text;
+  }
+
+  function decorateRowCounts(shadow) {
+    for (const row of shadow.querySelectorAll('.xfr-user-row')) {
+      const handle = (row.querySelector('.xfr-list-handle')?.textContent || '').trim().toLowerCase();
+      if (!handle) continue;
+      const meta = row.querySelector('.xfr-row-meta');
+      if (!meta) continue;
+      const bookmarkCount = Array.isArray(bookmarkCounts[handle]) ? bookmarkCounts[handle].length : 0;
+      const listCount = Array.isArray(membershipCounts[handle]) ? membershipCounts[handle].length : 0;
+      ensureCountChip(meta, 'bookmark', `★ ${bookmarkCount}`);
+      ensureCountChip(meta, 'list', `リスト ${listCount}`);
+    }
+  }
+
+  async function refreshCountCache(shadow = currentShadow) {
+    try {
+      const stored = await chrome.storage.local.get([BOOKMARKS_KEY, LIST_MEMBERSHIP_KEY]);
+      bookmarkCounts = stored[BOOKMARKS_KEY] && typeof stored[BOOKMARKS_KEY] === 'object' ? stored[BOOKMARKS_KEY] : {};
+      membershipCounts = stored[LIST_MEMBERSHIP_KEY] && typeof stored[LIST_MEMBERSHIP_KEY] === 'object' ? stored[LIST_MEMBERSHIP_KEY] : {};
+    } catch {
+      bookmarkCounts = {};
+      membershipCounts = {};
+    }
+    if (shadow) decorateRowCounts(shadow);
+  }
+
   function polish(shadow) {
     removeSyncSection(shadow);
     polishProfile(shadow);
     bindFollowingScroll(shadow);
+    decorateRowCounts(shadow);
   }
 
   function install(shadow) {
@@ -226,6 +268,7 @@
     }
 
     polish(shadow);
+    void refreshCountCache(shadow);
     observer = new MutationObserver(() => polish(shadow));
     observer.observe(shadow, { childList: true, subtree: true });
   }
@@ -234,6 +277,11 @@
     const host = document.getElementById(HOST_ID);
     if (host?.shadowRoot) install(host.shadowRoot);
   }
+
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local') return;
+    if (BOOKMARKS_KEY in changes || LIST_MEMBERSHIP_KEY in changes) void refreshCountCache();
+  });
 
   const pageObserver = new MutationObserver(findAndInstall);
   pageObserver.observe(document.documentElement, { childList: true, subtree: true });
