@@ -25,17 +25,17 @@
     autoCollectRunning = true;
     originalScrollY = window.scrollY;
     let stable = 0;
-    let lastSeen = 0;
+    let lastHeight = 0;
 
     try {
       for (let round = 0; round < 350; round += 1) {
-        const seen = document.querySelectorAll('[data-testid="UserCell"]').length;
-        const atBottom = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 160;
-        if (seen === lastSeen && atBottom) stable += 1;
+        const height = document.documentElement.scrollHeight;
+        const atBottom = window.scrollY + window.innerHeight >= height - 160;
+        if (height === lastHeight && atBottom) stable += 1;
         else stable = 0;
         if (stable >= 7) break;
-        lastSeen = seen;
-        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'auto' });
+        lastHeight = height;
+        window.scrollTo({ top: height, behavior: 'auto' });
         await sleep(650);
       }
     } finally {
@@ -75,11 +75,31 @@
     );
   }
 
-  function renderMediaGrid(section, items) {
-    const grid = section?.querySelector('.xfr-media-grid');
-    if (!grid || !items?.length) return;
-    grid.replaceChildren();
+  function setSectionNote(section, text) {
+    const note = section?.querySelector('.xfr-section-note');
+    if (note) note.textContent = text;
+  }
 
+  function renderMediaGrid(section, items, updatedAt) {
+    const grid = section?.querySelector('.xfr-media-grid');
+    if (!grid) return;
+
+    if (!updatedAt) {
+      setSectionNote(section, '自動取得中…');
+      return;
+    }
+
+    setSectionNote(section, items?.length ? `${items.length}件取得済み` : 'メディア投稿なし');
+    if (!items?.length) {
+      grid.replaceChildren();
+      const empty = document.createElement('div');
+      empty.className = 'xfr-media-placeholder';
+      empty.textContent = 'なし';
+      grid.append(empty);
+      return;
+    }
+
+    grid.replaceChildren();
     items.slice(0, 6).forEach((item) => {
       const link = document.createElement('a');
       link.href = item.postUrl || item.url;
@@ -102,11 +122,27 @@
     });
   }
 
-  function renderBookmarks(section, posts) {
+  function renderBookmarks(section, posts, syncStatus) {
     const grid = section?.querySelector('.xfr-bookmarks-placeholder');
-    if (!grid || !posts?.length) return;
-    grid.replaceChildren();
+    if (!grid) return;
 
+    const bookmarksFinished = syncStatus?.stage === 'bookmarks-done' || syncStatus?.stage === 'lists' || syncStatus?.stage === 'list-members' || syncStatus?.stage === 'lists-done';
+    setSectionNote(section, bookmarksFinished ? `${posts?.length || 0}件` : '自動同期中…');
+
+    if (!posts?.length) {
+      if (!bookmarksFinished) return;
+      grid.replaceChildren();
+      const empty = document.createElement('div');
+      empty.className = 'xfr-bookmark-tile';
+      empty.style.display = 'grid';
+      empty.style.placeItems = 'center';
+      empty.style.color = 'var(--xfr-muted, #536471)';
+      empty.textContent = 'なし';
+      grid.append(empty);
+      return;
+    }
+
+    grid.replaceChildren();
     posts.slice(0, 6).forEach((post) => {
       const media = post.media?.[0];
       const link = document.createElement('a');
@@ -152,7 +188,10 @@
 
     if (listChip) {
       const names = cache.lists.map((list) => list.name).filter(Boolean);
-      listChip.textContent = names.length ? `リスト: ${names.slice(0, 3).join(' / ')}${names.length > 3 ? ` +${names.length - 3}` : ''}` : 'リスト: なし';
+      const listsFinished = cache.syncStatus?.stage === 'lists-done';
+      listChip.textContent = names.length
+        ? `リスト: ${names.slice(0, 3).join(' / ')}${names.length > 3 ? ` +${names.length - 3}` : ''}`
+        : listsFinished ? 'リスト: なし' : 'リスト: 同期中…';
     }
     if (bookmarkChip) bookmarkChip.textContent = `★ ブックマーク ${cache.bookmarks.length}件`;
   }
@@ -164,12 +203,13 @@
     if (!cache) return;
 
     updateSummary(shadow, cache);
-    renderMediaGrid(findSection(shadow, '最近の画像・動画'), cache.media);
-    renderBookmarks(findSection(shadow, 'ブックマーク'), cache.bookmarks);
+    renderMediaGrid(findSection(shadow, '最近の画像・動画'), cache.media, cache.mediaUpdatedAt);
+    renderBookmarks(findSection(shadow, 'ブックマーク'), cache.bookmarks, cache.syncStatus);
 
     const status = shadow.querySelector('.xfr-status');
     if (status && cache.syncStatus?.message) {
-      status.textContent = `${status.textContent || ''}  /  ${cache.syncStatus.message}`.trim();
+      if (!status.dataset.xfrBase) status.dataset.xfrBase = status.textContent || '';
+      status.textContent = `${status.dataset.xfrBase} / ${cache.syncStatus.message}`;
     }
   }
 
