@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "X Follow Review",
-  "version": "0.5.0",
-  "description": "Add an in-page follow review workspace to X with automatic bookmarks, lists and media synchronization.",
-  "permissions": ["storage", "webRequest", "tabs"],
+  "version": "0.6.0",
+  "description": "Review X follows in-page with direct GraphQL synchronization for following, bookmarks, lists and media.",
+  "permissions": ["storage", "webRequest"],
   "host_permissions": [
     "https://x.com/*",
     "https://twitter.com/*",
-    "https://api.x.com/*"
+    "https://api.x.com/*",
+    "https://abs.twimg.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -19,13 +20,13 @@
   "content_scripts": [
     {
       "matches": ["https://x.com/*", "https://twitter.com/*"],
-      "js": ["page-hook.js"],
+      "js": ["page-hook.js", "graphql-page.js"],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
       "matches": ["https://x.com/*", "https://twitter.com/*"],
-      "js": ["bridge.js", "review-ui.js", "auto-sync-client.js", "sync-worker.js", "wide-layout.js"],
+      "js": ["bridge.js", "review-ui.js", "graphql-client.js", "wide-layout.js"],
       "run_at": "document_start",
       "world": "ISOLATED"
     }
