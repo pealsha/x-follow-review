@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "X Follow Review",
-  "version": "0.7.6",
+  "version": "0.7.7",
   "description": "Review X follows in a list-detail workspace with direct GraphQL synchronization and no background worker tabs.",
   "permissions": ["storage", "webRequest"],
   "host_permissions": [
@@ -20,13 +20,13 @@
   "content_scripts": [
     {
       "matches": ["https://x.com/*", "https://twitter.com/*"],
-      "js": ["page-hook.js", "graphql-page-v2.js", "graphql-xhr.js", "actions-page.js"],
+      "js": ["page-hook.js", "graphql-page-v2.js", "list-index-page.js", "graphql-xhr.js", "actions-page.js"],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
       "matches": ["https://x.com/*", "https://twitter.com/*"],
-      "js": ["bridge.js", "review-ui-v2.js", "graphql-client.js", "layout-fix.js", "ui-polish.js"],
+      "js": ["bridge.js", "review-ui-v2.js", "graphql-client.js", "list-index-client.js", "layout-fix.js", "ui-polish.js"],
       "run_at": "document_start",
       "world": "ISOLATED"
     }
