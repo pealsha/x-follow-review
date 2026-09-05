@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>X Follow Review Probe</title>
+  <link rel="stylesheet" href="probe.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>X Follow Review Probe</h1>
+        <p>X が実際に使っている GraphQL operation とレスポンス構造を観測します。認証ヘッダーの値やCookie本文は保存しません。</p>
+      </div>
+      <div class="actions">
+        <button id="refresh">更新</button>
+        <button id="copy">診断JSONをコピー</button>
+        <button id="clear" class="danger">履歴を消去</button>
+      </div>
+    </header>
+    <section>
+      <h2>確認する4系統</h2>
+      <div class="step-grid">
+        <article><strong>Following</strong><span id="status-following" class="badge">未観測</span></article>
+        <article><strong>Bookmarks</strong><span id="status-bookmarks" class="badge">未観測</span></article>
+        <article><strong>UserMedia</strong><span id="status-media" class="badge">未観測</span></article>
+        <article><strong>Lists</strong><span id="status-lists" class="badge">未観測</span></article>
+      </div>
+    </section>
+    <section>
+      <div class="section-title"><h2>観測された operation</h2><span id="count"></span></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>operation</th><th>queryId</th><th>method</th><th>status</th><th>shape</th><th>最終観測</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+    <section><h2>詳細</h2><p id="detail-help">行をクリックすると詳細を表示します。</p><pre id="detail"></pre></section>
+  </main>
+  <script src="probe.js"></script>
+</body>
+</html>
