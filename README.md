@@ -4,20 +4,26 @@ Xのフォロー整理を、Xの画面内だけで完結させるChrome拡張で
 
 `https://x.com/<username>/following` に `Review Mode` を追加し、通常のFollowing一覧に近い一覧からユーザーを選ぶと、右側にその人の詳細情報を表示します。
 
-## 現在のReview Mode
+## Review Mode
 
 Review ModeではXの左ナビを残し、その右側をレビュー用ワークスペースとして使います。
 
 - 左側: Following一覧
+  - 名前 / @handle
+  - ブックマーク件数
+  - 所属リスト数
+  - 検索
+  - 独立スクロール
 - 右側: 選択ユーザーの詳細
   - プロフィール
   - 最近の画像・動画
-  - 自分がブックマークしたその人の投稿
+  - 自分がブックマークした投稿
   - 自分のX Listsと所属状態
   - リストへの追加 / 削除
   - フォロー解除
-- Following一覧の検索
 - Xのライト / Dim / Lights outテーマに追従
+
+プロフィール上部の名前または `@handle` をクリックすると、その人のXプロフィールを新しいタブで開きます。
 
 ## データ取得方式
 
@@ -25,36 +31,36 @@ Review ModeではXの左ナビを残し、その右側をレビュー用ワー�
 
 X Web自身が使っている内部GraphQLを、現在開いているXページのセッション内から直接呼びます。
 
-queryIdは固定せず、Xが現在行っているGraphQL通信と現在のJavaScript bundleから実行時に発見します。リスト系では、bundleから見つからない場合だけ現在確認できているqueryIdをフォールバックとして使用します。
+queryIdはXが現在行っているGraphQL通信とJavaScript bundleから実行時に発見し、見つからない場合だけ既知のqueryIdをフォールバックとして使用します。
 
 認証用ヘッダーはX自身のGraphQL通信からページ内メモリへ取得し、認証値をextension storageへ保存しません。
 
 ## 取得順
 
-Review Modeを開くと次の順で動きます。
+Review Modeを開くと次のように動きます。
 
-1. `Following` を最優先でGraphQL取得
-   - 1ページ目から順次一覧へ反映
-   - 全件取得完了を待たずに操作可能
-2. Followingの取得開始後、`Bookmarks` と自分のListsを並行同期
-3. 一覧でユーザーを選択した時だけ、その人について
-   - `UserMedia`
-   - 自分のListsへの所属状態
-   を取得
+1. `Following` を最優先で取得
+   - 取得できたユーザーから順次一覧へ反映
+2. `Bookmarks` と自分のListsを並行同期
+3. Lists取得後、各リストの `ListMembers` を一度ずつ取得
+   - `userId -> 所属リスト一覧` の逆引きを作成
+   - Following一覧に、クリック前からリスト数を表示
+4. ユーザーを選択した時だけ、その人の `UserMedia` を取得
+   - 全フォロー相手のMediaを最初から取得しない
 
-そのため、全フォロー相手のMediaを最初から取得することはありません。
+ブックマークも全件同期後に著者ごとへ逆引きするため、Following一覧でクリック前から件数を確認できます。
 
 ## リスト取得・所属判定
 
-Xは2026年中頃に `ListOwnerships` を退役させたため、この拡張では依存しません。
+自分のリスト一覧は `ListsManagementPageTimeline` から取得します。
 
-自分のリスト一覧は `ListsManagementPageTimeline` から取得します。選択ユーザーの所属判定は、現在のX仕様に追従するため次の順にフォールバックします。
+全体の件数表示には各リストの `ListMembers` を一度ずつ取得して逆引きを作ります。個別詳細では、必要に応じて次の順で所属状態を確認します。
 
-1. `ListsManagementPageTimeline` の管理用membership情報
+1. `ListsManagementPageTimeline` のmembership情報
 2. `ListMemberships`
-3. `ListMembers` を必要なリストだけ走査
+3. キャッシュ済み `ListMembers`
 
-`ListMembers` の走査結果はページ内メモリにキャッシュし、同じリストを繰り返し最初から取得しません。また、List側の取得に失敗しても `UserMedia` の取得まで失敗扱いにしない設計です。
+`ListMembers` の結果はページ内メモリにキャッシュするため、同じリストをユーザーごとに最初から走査しません。
 
 ## リスト操作
 
@@ -67,7 +73,18 @@ Xは2026年中頃に `ListOwnerships` を退役させたため、この拡張で
 
 ## フォロー解除
 
-選択ユーザーの詳細画面からフォロー解除できます。誤操作防止の確認を挟んでから実行します。
+選択ユーザーの詳細画面からフォロー解除できます。確認ダイアログを挟んでから実行します。
+
+## 構成
+
+通常動作に必要なコードは役割ごとに集約しています。
+
+- `review-ui.js`: Review ModeのUI、テーマ、レイアウト、スクロール管理
+- `graphql-page.js`: Xページ内で動くGraphQL Adapter
+- `graphql-client.js`: 同期の順序、キャッシュ更新、選択ユーザーの遅延取得
+- `graphql-xhr.js`: XHRから現在のGraphQL認証情報をページ内メモリへ捕捉
+- `actions-page.js`: フォロー解除などGraphQL外の操作
+- `page-hook.js` / `bridge.js` / `background.js` / `probe.*`: 開発用GraphQL診断
 
 ## インストール
 
