@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "X Follow Review",
-  "version": "0.8.2",
-  "description": "Review X follows in a list-detail workspace with direct GraphQL synchronization.",
+  "version": "0.9.0",
+  "description": "Review X follows with cache-first direct GraphQL synchronization.",
   "permissions": ["storage", "webRequest"],
   "host_permissions": [
     "https://x.com/*",
