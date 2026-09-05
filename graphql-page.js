@@ -1,6 +1,9 @@
 (() => {
   const MARKER = 'X_FOLLOW_REVIEW_GQL_V1';
   const QUERY_TTL = 6 * 60 * 60 * 1000;
+  const QUERY_CACHE_TTL = 14 * 24 * 60 * 60 * 1000;
+  const QUERY_CACHE_KEY = 'xFollowReview.queryIds.v1';
+  const LIST_MEMBER_TTL = 24 * 60 * 60 * 1000;
 
   const shared = window.__xfrGraphqlShared ||= {
     headers: null,
@@ -11,7 +14,7 @@
 
   const FALLBACK_QUERY_IDS = {
     Following: 'BEkNpEt5pNETESoqMsTEGA',
-    Bookmarks: 'i8QZ1qqy36ffA3bxfTaf7w',
+    Bookmarks: 'iblrFnKr6PZUR-dWpfXG6g',
     UserByScreenName: 'xc8f1g7BYqr6VTzTbvNlGw',
     UserMedia: '2tLOJWwGuCTytDrGBg8VwQ',
     ListsManagementPageTimeline: '4zAcuxtfEt0_ds2pU17Liw',
@@ -79,10 +82,53 @@
 
   const listMemberCache = new Map();
   let bundleScanPromise = null;
+  let queryPersistTimer = 0;
   const nativeFetch = window.fetch.bind(window);
 
   function emit(type, payload = {}) {
     window.postMessage({ marker: MARKER, type, ...payload }, '*');
+  }
+
+  function persistQueryIdsSoon() {
+    clearTimeout(queryPersistTimer);
+    queryPersistTimer = setTimeout(() => {
+      try {
+        const value = {};
+        for (const [operation, queryId] of shared.queryIds) {
+          const updatedAt = shared.queryTimes.get(operation) || Date.now();
+          value[operation] = { queryId, updatedAt };
+        }
+        localStorage.setItem(QUERY_CACHE_KEY, JSON.stringify(value));
+      } catch {}
+    }, 250);
+  }
+
+  function remember(operation, queryId, persist = true) {
+    if (!operation || !queryId) return;
+    shared.queryIds.set(operation, queryId);
+    shared.queryTimes.set(operation, Date.now());
+    if (persist) persistQueryIdsSoon();
+  }
+
+  function loadPersistedQueryIds() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(QUERY_CACHE_KEY) || '{}');
+      const now = Date.now();
+      for (const [operation, entry] of Object.entries(raw || {})) {
+        if (!WANTED.has(operation)) continue;
+        const queryId = String(entry?.queryId || '');
+        const updatedAt = Number(entry?.updatedAt || 0);
+        if (!queryId || !updatedAt || now - updatedAt > QUERY_CACHE_TTL) continue;
+        shared.queryIds.set(operation, queryId);
+        shared.queryTimes.set(operation, updatedAt);
+      }
+    } catch {}
+  }
+
+  function forgetQueryId(operation) {
+    shared.queryIds.delete(operation);
+    shared.queryTimes.delete(operation);
+    persistQueryIdsSoon();
   }
 
   function parseEndpoint(raw) {
@@ -96,12 +142,6 @@
     } catch {
       return null;
     }
-  }
-
-  function remember(operation, queryId) {
-    if (!operation || !queryId) return;
-    shared.queryIds.set(operation, queryId);
-    shared.queryTimes.set(operation, Date.now());
   }
 
   function usableHeaders(value) {
@@ -198,8 +238,7 @@
       const at = shared.queryTimes.get(operation) || 0;
       if (cached && Date.now() - at < QUERY_TTL) return cached;
     } else {
-      shared.queryIds.delete(operation);
-      shared.queryTimes.delete(operation);
+      forgetQueryId(operation);
     }
     await scanBundles();
     return shared.queryIds.get(operation) || FALLBACK_QUERY_IDS[operation] || '';
@@ -239,6 +278,7 @@
       credentials: 'include',
     });
     if ((response.status === 400 || response.status === 404) && !forceRefresh) {
+      forgetQueryId(operation);
       return gqlGet(operation, variables, true);
     }
 
@@ -249,6 +289,7 @@
     if (body?.errors?.length && !body.data) {
       throw new Error(`${operation}: ${body.errors.map((e) => e?.message).filter(Boolean).join(' / ')}`);
     }
+    remember(operation, queryId);
     return { body, response };
   }
 
@@ -262,6 +303,7 @@
       body: JSON.stringify({ variables, queryId }),
     });
     if ((response.status === 400 || response.status === 404) && !forceRefresh) {
+      forgetQueryId(operation);
       return gqlMutation(operation, variables, true);
     }
 
@@ -271,6 +313,7 @@
     if (!response.ok) throw new Error(`${operation}: HTTP ${response.status}${text ? ` ${text.slice(0, 180)}` : ''}`);
     const fatal = (body?.errors || []).filter((e) => !/decode/i.test(e?.message || ''));
     if (fatal.length) throw new Error(`${operation}: ${fatal.map((e) => e?.message).filter(Boolean).join(' / ')}`);
+    remember(operation, queryId);
     return body;
   }
 
@@ -438,53 +481,108 @@
       const next = bottomCursor(body);
       if (!next || next === cursor || (!fresh.length && page > 1)) break;
       cursor = next;
-      await pause(response, 350);
+      await pause(response, 300);
     }
     return { users: Array.from(seen.values()) };
   }
 
-  async function syncBookmarks(requestId) {
+  async function syncBookmarks(requestId, payload = {}) {
+    const knownIds = new Set((Array.isArray(payload.knownIds) ? payload.knownIds : []).map(String));
+    const fullSync = payload.fullSync === true || knownIds.size === 0;
     let cursor = '';
+    let reachedKnown = false;
+    let reachedEnd = false;
     const seen = new Map();
+
     for (let page = 0; page < 500; page += 1) {
       const { body, response } = await gqlGet('Bookmarks', {
         count: 50,
         includePromotedContent: false,
         ...(cursor ? { cursor } : {}),
       });
-      const fresh = collectTweets(body).filter((tweet) => !seen.has(tweet.id));
-      fresh.forEach((tweet) => seen.set(tweet.id, tweet));
-      emit('progress', { id: requestId, kind: 'bookmarks', items: fresh, total: seen.size });
+      const pageTweets = collectTweets(body);
+      const fresh = [];
+
+      for (const tweet of pageTweets) {
+        if (!fullSync && knownIds.has(String(tweet.id))) {
+          reachedKnown = true;
+          break;
+        }
+        if (!seen.has(tweet.id)) {
+          seen.set(tweet.id, tweet);
+          fresh.push(tweet);
+        }
+      }
+
+      if (fresh.length) emit('progress', { id: requestId, kind: 'bookmarks', items: fresh, total: seen.size, delta: !fullSync });
+      if (reachedKnown) break;
+
       const next = bottomCursor(body);
-      if (!next || next === cursor || (!fresh.length && page > 1)) break;
+      if (!next || next === cursor || (!pageTweets.length && page > 0)) {
+        reachedEnd = true;
+        break;
+      }
       cursor = next;
-      await pause(response, 800);
+      await pause(response, 650);
     }
-    return { posts: Array.from(seen.values()) };
+
+    return {
+      posts: Array.from(seen.values()),
+      delta: !fullSync && reachedKnown,
+      reachedKnown,
+      reachedEnd,
+      fullSync,
+    };
   }
 
   async function getOwnedLists(viewerId) {
     const { body } = await gqlGet('ListsManagementPageTimeline', { count: 100 });
     const lists = collectLists(body);
-    return lists.filter((list) => !list.ownerId || !viewerId || list.ownerId === String(viewerId));
+    if (!viewerId) return lists;
+    const owned = lists.filter((list) => !list.ownerId || list.ownerId === String(viewerId));
+    return owned.length ? owned : lists;
   }
 
-  async function getListMembers(listId) {
+  function persistentMemberEntry(cache, listId) {
+    const entry = cache?.[String(listId)];
+    if (!entry || !Array.isArray(entry.userIds)) return null;
+    const updatedAt = Number(entry.updatedAt || 0);
+    if (!updatedAt || Date.now() - updatedAt > LIST_MEMBER_TTL) return null;
+    return { ids: new Set(entry.userIds.map(String)), updatedAt, fromPersistentCache: true };
+  }
+
+  async function getListMembers(listId, persistentCache = null) {
     const key = String(listId);
     if (listMemberCache.has(key)) return listMemberCache.get(key);
+
+    const cached = persistentMemberEntry(persistentCache, key);
+    if (cached) {
+      const promise = Promise.resolve(cached);
+      listMemberCache.set(key, promise);
+      return promise;
+    }
+
     const promise = (async () => {
       let cursor = '';
       const ids = new Set();
       for (let page = 0; page < 100; page += 1) {
-        const { body, response } = await gqlGet('ListMembers', { listId: key, count: 100, ...(cursor ? { cursor } : {}) });
+        const { body, response } = await gqlGet('ListMembers', {
+          listId: key,
+          count: 100,
+          ...(cursor ? { cursor } : {}),
+        });
         collectUsers(body).forEach((user) => ids.add(String(user.id)));
         const next = bottomCursor(body);
         if (!next || next === cursor) break;
         cursor = next;
-        await pause(response, 500);
+        await pause(response, 400);
       }
-      return ids;
-    })();
+      return { ids, updatedAt: Date.now(), fromPersistentCache: false };
+    })().catch((error) => {
+      listMemberCache.delete(key);
+      throw error;
+    });
+
     listMemberCache.set(key, promise);
     return promise;
   }
@@ -526,8 +624,8 @@
     const matched = [];
     for (const list of ownedLists) {
       try {
-        const members = await getListMembers(list.id);
-        if (members.has(String(user.id))) matched.push(list);
+        const result = await getListMembers(list.id);
+        if (result.ids.has(String(user.id))) matched.push(list);
       } catch {}
     }
     return matched;
@@ -549,8 +647,11 @@
   async function syncListIndex(requestId, payload) {
     const users = Array.isArray(payload?.users) ? payload.users : [];
     const lists = Array.isArray(payload?.lists) ? payload.lists : [];
+    const persistentCache = payload?.memberCache && typeof payload.memberCache === 'object' ? payload.memberCache : {};
     const userById = new Map();
     const memberships = {};
+    const memberCache = {};
+
     for (const user of users) {
       const id = String(user?.id || '');
       const key = String(user?.key || user?.handle || '').toLowerCase();
@@ -558,30 +659,39 @@
       userById.set(id, key);
       memberships[key] = [];
     }
+
     for (let index = 0; index < lists.length; index += 1) {
       const list = lists[index];
       if (!list?.id) continue;
-      const members = await getListMembers(list.id);
-      for (const memberId of members) {
+      const result = await getListMembers(list.id, persistentCache);
+      const entry = {
+        userIds: Array.from(result.ids),
+        updatedAt: result.updatedAt,
+      };
+      memberCache[String(list.id)] = entry;
+
+      for (const memberId of result.ids) {
         const key = userById.get(String(memberId));
         if (!key) continue;
         memberships[key].push({ id: String(list.id), name: list.name || String(list.id) });
       }
+
       emit('progress', {
         id: requestId,
         kind: 'list-index',
         memberships,
+        memberCache: { [String(list.id)]: entry },
         completed: index + 1,
         total: lists.length,
+        cacheHit: result.fromPersistentCache === true,
       });
     }
-    return { memberships, listCount: lists.length, userCount: userById.size };
+
+    return { memberships, memberCache, listCount: lists.length, userCount: userById.size };
   }
 
-  async function syncDetail(username, viewerId = '') {
-    const user = await lookupUser(username);
-    const ownerId = viewerId || currentUserId();
-    const mediaPromise = gqlGet('UserMedia', {
+  async function fetchMediaForUser(user) {
+    return gqlGet('UserMedia', {
       userId: user.id,
       count: 20,
       includePromotedContent: false,
@@ -592,6 +702,17 @@
       .flatMap((tweet) => tweet.media.map((media) => ({ ...media, postUrl: tweet.url, postId: tweet.id })))
       .slice(0, 18))
       .catch(() => []);
+  }
+
+  async function syncMedia(username) {
+    const user = await lookupUser(username);
+    return { user, media: await fetchMediaForUser(user) };
+  }
+
+  async function syncDetail(username, viewerId = '') {
+    const user = await lookupUser(username);
+    const ownerId = viewerId || currentUserId();
+    const mediaPromise = fetchMediaForUser(user);
     const listsPromise = getOwnedLists(ownerId)
       .then(async (allLists) => ({ allLists, lists: await resolveMemberships(user, allLists, ownerId) }))
       .catch(() => ({ allLists: [], lists: [] }));
@@ -606,15 +727,23 @@
     if (!listId) throw new Error('listIdが空です。');
     await gqlMutation(operation, { listId, userId: user.id });
     listMemberCache.delete(listId);
-    return { ok: true };
+    return {
+      ok: true,
+      operation,
+      userId: user.id,
+      listId,
+      add: payload?.add === true,
+      invalidateListId: listId,
+    };
   }
 
   async function handleAction(action, payload, requestId) {
     if (action === 'sync-following') return syncFollowing(requestId);
-    if (action === 'sync-bookmarks') return syncBookmarks(requestId);
+    if (action === 'sync-bookmarks') return syncBookmarks(requestId, payload || {});
     if (action === 'sync-lists') return syncLists();
     if (action === 'sync-list-index') return syncListIndex(requestId, payload || {});
     if (action === 'sync-detail') return syncDetail(payload?.username, payload?.viewerId || '');
+    if (action === 'sync-media') return syncMedia(payload?.username);
     if (action === 'toggle-list') return toggleList(payload || {});
     throw new Error(`Unknown GraphQL action: ${action}`);
   }
@@ -627,4 +756,7 @@
       .then((result) => emit('response', { id: message.id, ok: true, result }))
       .catch((error) => emit('response', { id: message.id, ok: false, error: String(error?.message || error) }));
   });
+
+  loadPersistedQueryIds();
+  captureFromPerformance();
 })();
