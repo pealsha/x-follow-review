@@ -1,45 +1,64 @@
 # X Follow Review
 
-Xのフォロー一覧を、1人ずつ判断しやすいレビュー画面に変えるChrome拡張です。
+Xのフォロー整理を、Xの画面内だけで完結させるChrome拡張です。
 
-現在はMVP段階で、XのFollowingページに直接 `Review Mode` を追加します。既存のGraphQL観測プローブも残してあり、今後リスト所属・最近のメディア・自分のブックマークをレビュー画面に統合していきます。
+`https://x.com/<username>/following` に `Review Mode` を追加し、通常のFollowing一覧に近い一覧からユーザーを選ぶと、右側にその人の詳細情報を表示します。
 
-## 現在できること
+## 現在のReview Mode
 
-- `https://x.com/<username>/following` に `Review Mode` ボタンを表示
-- Xの現在のFollowing DOMから、表示済みユーザーを収集
-- 1人ずつプロフィールカードとして表示
-- `K = 残す`
-- `S = 保留`
-- `D = 解除候補`
-- 左右矢印で前後移動
-- 判定結果を `chrome.storage.local` に保存
-- `さらに読み込む` で背後のFollowing一覧をスクロールして追加収集
-- XのSPA遷移に追従
-- Shadow DOMでX本体のCSSとレビューUIを分離
+Review ModeではXの左ナビを残し、その右側をレビュー用ワークスペースとして使います。
 
-現段階では、`解除候補` を付けても実際のフォロー解除は行いません。
+- 左側: Following一覧
+- 右側: 選択ユーザーの詳細
+  - プロフィール
+  - 最近の画像・動画
+  - 自分がブックマークしたその人の投稿
+  - 自分のX Listsと所属状態
+  - リストへの追加 / 削除
+  - フォロー解除
+- Following一覧の検索
+- Xのライト / Dim / Lights outテーマに追従
 
-## 今後レビュー画面に追加する情報
+## データ取得方式
 
-1. 自分がその人を入れているX Lists
-2. 最近の画像・動画投稿
-3. その人の投稿のうち、自分がブックマークしたもの
-4. 最終投稿日などの補助情報
-5. 最後に解除候補をまとめて再確認してからUnfollow
+通常利用ではバックグラウンドタブを開きません。
 
-## GraphQL観測プローブ
+X Web自身が使っている内部GraphQLを、現在開いているXページのセッション内から直接呼びます。
 
-X Webが実際に使っているGraphQL operation・queryId・リクエスト変数・レスポンスの**構造**を観測する診断機能も含まれています。
+queryIdは固定せず、次の情報から実行時に発見します。
 
-主に次の4系統を確認します。
+1. Xが現在行っているGraphQL通信
+2. Xの現在のJavaScript bundle
 
-1. Following
-2. Bookmarks
-3. UserMedia / UserTweets
-4. ListsManagementPageTimeline / ListMembers などのList系
+認証用ヘッダーはX自身のGraphQL通信からページ内メモリへ取得し、認証値をextension storageへ保存しません。
 
-queryIdは固定せず、Xが実際に行った通信から取得します。
+## 取得順
+
+Review Modeを開くと次の順で動きます。
+
+1. `Following` を最優先でGraphQL取得
+   - 1ページ目から順次一覧へ反映
+   - 全件取得完了を待たずに操作可能
+2. Followingの取得開始後、`Bookmarks` と自分のListsを並行同期
+3. 一覧でユーザーを選択した時だけ、その人について
+   - `UserMedia`
+   - `ListOwnerships`による自分のListsへの所属状態
+   を取得
+
+そのため、全フォロー相手のMediaを最初から取得することはありません。
+
+## リスト操作
+
+選択ユーザーの詳細画面に自分のリストをチェックボックスで表示します。
+
+- ON: `ListAddMember`
+- OFF: `ListRemoveMember`
+
+をXのGraphQL mutationで直接実行します。
+
+## フォロー解除
+
+選択ユーザーの詳細画面からフォロー解除できます。誤操作防止の確認を挟んでから実行します。
 
 ## インストール
 
@@ -49,7 +68,7 @@ queryIdは固定せず、Xが実際に行った通信から取得します。
 git clone https://github.com/pealsha/x-follow-review.git
 ```
 
-その後、Chromeで以下を行います。
+Chromeで:
 
 1. `chrome://extensions/` を開く
 2. 「デベロッパー モード」をON
@@ -57,50 +76,40 @@ git clone https://github.com/pealsha/x-follow-review.git
 4. cloneした `x-follow-review` フォルダを選択
 5. Xのタブを再読み込み
 
-以後の更新は、リポジトリ内で以下を実行してChromeの拡張を再読み込みするだけです。
+以後の更新は:
 
 ```powershell
+cd C:\Users\perus\Documents\x-follow-review
 git pull
 ```
 
-## Review Modeの使い方
+その後、`chrome://extensions/` で拡張を再読み込みし、Xタブも再読み込みします。
 
-1. 自分のプロフィールから「フォロー中」を開く
-2. 画面右上付近に出る `Review Mode` を押す
-3. `残す / 保留 / 解除候補` を付ける
-4. 必要なら `さらに読み込む` を押してFollowing一覧を下へ進める
-5. `通常表示` で元のX画面へ戻る
+## GraphQL診断機能
 
-現在はDOMに読み込まれたユーザーだけを対象にします。Following全件の自動ページネーションは今後GraphQL Adapter側で実装します。
+拡張機能アイコンを押すと、X Webが使用したGraphQL operation・queryId・レスポンス構造を確認する診断画面を開けます。
 
-## 診断画面
-
-拡張機能アイコンをクリックすると診断画面を開けます。
-
-別タブのXで以下を操作すると、使用されたGraphQL operationを観測できます。
-
-1. 自分のプロフィール →「フォロー中」→ 少しスクロール
-2. 「ブックマーク」→ 少しスクロール
-3. 任意のフォロー相手 →「メディア」→ 少しスクロール
-4. 「リスト」→ 自作リストを1つ開く → メンバー一覧も表示
+これは開発・X仕様変更時の調査用です。通常のReview Mode利用では手動でBookmarksやListsページを開く必要はありません。
 
 ## プライバシー上の挙動
 
-- Authorizationヘッダーの値は保存しません
-- Cookie本文は保存しません
-- CSRFトークンの値は保存しません
-- GraphQLレスポンス本文そのものは保存せず、構造を要約したshapeだけ保存します
-- request variablesも値ではなく構造・型だけを保存します
-- データは `chrome.storage.local` のみです
+- Authorizationヘッダー値を `chrome.storage` に保存しません
+- Cookie本文を保存しません
+- CSRFトークン値を保存しません
+- Review Mode用の認証ヘッダーはページ内メモリだけで利用します
+- 診断ログでは認証ヘッダーの存在有無のみ記録します
+- Review用のFollowing / Bookmarks / Lists / Mediaキャッシュは `chrome.storage.local` に保存します
 
 ## 現在の段階
 
-- Review Mode UI: 実装済み
-- Following DOM収集: 実装済み
-- 判定ローカル保存: 実装済み
-- GraphQL operation観測: 実装済み
-- Following GraphQL同期: 未実装
-- Bookmarks同期: 未実装
-- Lists同期: 未実装
-- UserMedia同期: 未実装
-- Unfollow実行: 未実装
+- Following一覧 + 詳細ペインUI: 実装済み
+- Following GraphQL同期: 実装済み
+- Bookmarks GraphQL同期: 実装済み
+- Lists GraphQL同期: 実装済み
+- 選択ユーザーのUserMedia取得: 実装済み
+- 選択ユーザーのList所属確認: 実装済み
+- ListAddMember / ListRemoveMember: 実装済み
+- フォロー解除: 実装済み
+- バックグラウンド同期タブ: 廃止
+
+Xの内部GraphQLは非公開仕様のため、operation名・variables・feature flags等は将来変更される可能性があります。queryIdについては実行時発見で追従する設計です。
