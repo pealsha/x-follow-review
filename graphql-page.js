@@ -11,7 +11,7 @@
 
   const FALLBACK_QUERY_IDS = {
     Following: 'BEkNpEt5pNETESoqMsTEGA',
-    Bookmarks: 'RV1g3b8n_SGOHwkqKYSCFw',
+    Bookmarks: 'i8QZ1qqy36ffA3bxfTaf7w',
     UserByScreenName: 'xc8f1g7BYqr6VTzTbvNlGw',
     UserMedia: '2tLOJWwGuCTytDrGBg8VwQ',
     ListsManagementPageTimeline: '4zAcuxtfEt0_ds2pU17Liw',
@@ -447,7 +447,11 @@
     let cursor = '';
     const seen = new Map();
     for (let page = 0; page < 500; page += 1) {
-      const { body, response } = await gqlGet('Bookmarks', { count: 50, ...(cursor ? { cursor } : {}) });
+      const { body, response } = await gqlGet('Bookmarks', {
+        count: 50,
+        includePromotedContent: false,
+        ...(cursor ? { cursor } : {}),
+      });
       const fresh = collectTweets(body).filter((tweet) => !seen.has(tweet.id));
       fresh.forEach((tweet) => seen.set(tweet.id, tweet));
       emit('progress', { id: requestId, kind: 'bookmarks', items: fresh, total: seen.size });
