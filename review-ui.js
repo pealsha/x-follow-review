@@ -1,581 +1,366 @@
 (() => {
   const HOST_ID = 'x-follow-review-ui-host';
-  const DECISION_KEY = 'xFollowReview.decisions.v1';
   const ROUTE_RE = /^\/[A-Za-z0-9_]+\/following\/?$/;
+  const GQL_MARKER = 'X_FOLLOW_REVIEW_GQL_V1';
+  const ACTION_MARKER = 'X_FOLLOW_REVIEW_ACTION_V1';
+
+  const KEYS = {
+    following: 'xFollowReview.following.v1',
+    bookmarks: 'xFollowReview.bookmarksByAuthor.v1',
+    lists: 'xFollowReview.lists.v1',
+    memberships: 'xFollowReview.listMemberships.v1',
+    media: 'xFollowReview.mediaByAuthor.v1',
+  };
 
   let host = null;
   let shadow = null;
   let root = null;
-  let reviewMode = false;
-  let currentIndex = 0;
-  let users = [];
-  let userKeys = new Set();
-  let decisions = {};
-  let lastPathname = location.pathname;
-  let scanTimer = null;
+  let lastPath = location.pathname;
   let themeTimer = null;
-  let lastThemeSignature = '';
+  let seq = 0;
+  const pending = new Map();
+
+  const state = {
+    open: false,
+    users: [],
+    selectedKey: '',
+    search: '',
+    bookmarks: {},
+    lists: [],
+    memberships: {},
+    media: {},
+    busy: false,
+    listScrollTop: 0,
+  };
 
   const css = `
-    :host {
-      all: initial;
-      color-scheme: var(--xfr-color-scheme, light);
-    }
+    :host { all: initial; color-scheme: var(--xfr-scheme, dark); }
     * { box-sizing: border-box; }
-    button, a { font: inherit; }
+    button, input { font: inherit; }
 
     .xfr-shell {
       position: fixed;
       top: 0;
       bottom: 0;
       width: 600px;
-      pointer-events: none;
       z-index: 2147483000;
-      color: var(--xfr-fg, #0f1419);
-      font: 14px/1.42 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      pointer-events: none;
+      color: var(--xfr-fg);
+      font: 14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     }
 
     .xfr-toggle {
       position: absolute;
-      top: 11px;
+      top: 10px;
       right: 12px;
       pointer-events: auto;
-      min-height: 34px;
-      border: 1px solid var(--xfr-border-strong, #cfd9de);
+      border: 1px solid var(--xfr-border-strong);
       border-radius: 999px;
-      background: var(--xfr-elevated, rgba(255,255,255,.96));
-      color: var(--xfr-fg, #0f1419);
-      padding: 6px 13px;
+      background: var(--xfr-elevated);
+      color: var(--xfr-fg);
+      padding: 7px 13px;
       font-weight: 700;
       cursor: pointer;
-      box-shadow: var(--xfr-shadow, 0 2px 10px rgba(0,0,0,.10));
       backdrop-filter: blur(12px);
     }
-    .xfr-toggle:hover { background: var(--xfr-hover, #f7f9f9); }
 
-    .xfr-panel {
+    .xfr-workspace {
       position: absolute;
       inset: 0;
-      pointer-events: auto;
       display: none;
-      flex-direction: column;
+      grid-template-rows: 56px minmax(0,1fr);
+      pointer-events: auto;
       overflow: hidden;
-      background: var(--xfr-bg, #fff);
-      border-left: 1px solid var(--xfr-border, #eff3f4);
-      border-right: 1px solid var(--xfr-border, #eff3f4);
+      background: var(--xfr-bg);
+      border-left: 1px solid var(--xfr-border);
     }
-    .xfr-shell[data-open="true"] .xfr-panel { display: flex; }
+
+    .xfr-shell[data-open="true"] .xfr-workspace { display: grid; }
     .xfr-shell[data-open="true"] .xfr-toggle { display: none; }
 
-    .xfr-header {
-      flex: none;
-      min-height: 54px;
+    .xfr-topbar {
       display: flex;
       align-items: center;
-      gap: 10px;
-      padding: 8px 12px;
-      border-bottom: 1px solid var(--xfr-border, #eff3f4);
-      background: var(--xfr-elevated, #fff);
-      backdrop-filter: blur(12px);
+      gap: 12px;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--xfr-border);
+      background: var(--xfr-elevated);
+      backdrop-filter: blur(14px);
     }
-    .xfr-title { font-size: 18px; font-weight: 800; flex: 1; letter-spacing: -.01em; }
-    .xfr-progress { color: var(--xfr-muted, #536471); font-size: 13px; white-space: nowrap; }
+
+    .xfr-title { font-size: 19px; font-weight: 800; }
 
     button {
       appearance: none;
-      border: 1px solid var(--xfr-border-strong, #cfd9de);
-      border-radius: 999px;
+      border: 1px solid var(--xfr-border-strong);
       background: transparent;
-      color: inherit;
-      padding: 7px 11px;
-      font-weight: 700;
+      color: var(--xfr-fg);
+      border-radius: 999px;
+      padding: 7px 12px;
       cursor: pointer;
+      font-weight: 700;
     }
-    button:hover { background: var(--xfr-hover, #f7f9f9); }
-    button:focus-visible { outline: 2px solid #1d9bf0; outline-offset: 2px; }
 
-    .xfr-body {
-      flex: 1;
+    button:hover { background: var(--xfr-hover); }
+    button:disabled { opacity: .5; cursor: default; }
+
+    .xfr-main {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(280px,340px) minmax(0,1fr);
+      overflow: hidden;
+    }
+
+    .xfr-list-pane {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0,1fr);
+      overflow: hidden;
+      border-right: 1px solid var(--xfr-border);
+      background: var(--xfr-bg);
+    }
+
+    .xfr-search-wrap {
+      padding: 12px;
+      border-bottom: 1px solid var(--xfr-border);
+    }
+
+    .xfr-search {
+      width: 100%;
+      border: 1px solid var(--xfr-border-strong);
+      border-radius: 999px;
+      background: var(--xfr-subtle);
+      color: var(--xfr-fg);
+      padding: 9px 13px;
+      outline: none;
+    }
+
+    .xfr-search:focus { border-color: #1d9bf0; }
+
+    .xfr-user-list {
       min-height: 0;
       overflow-y: auto;
       overscroll-behavior: contain;
-      scrollbar-color: var(--xfr-scroll-thumb, #cfd9de) transparent;
-      background: var(--xfr-bg, #fff);
+      scrollbar-gutter: stable;
+      scrollbar-color: var(--xfr-scroll) transparent;
+      touch-action: pan-y;
+    }
+
+    .xfr-user-row {
+      display: grid;
+      grid-template-columns: 44px minmax(0,1fr);
+      gap: 10px;
+      width: 100%;
+      padding: 11px 12px;
+      border: 0;
+      border-bottom: 1px solid var(--xfr-border);
+      border-radius: 0;
+      text-align: left;
+      font-weight: 400;
+      background: transparent;
+    }
+
+    .xfr-user-row:hover { background: var(--xfr-hover); }
+    .xfr-user-row[data-selected="true"] { background: var(--xfr-selected); }
+    .xfr-list-avatar { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; background: var(--xfr-subtle); }
+    .xfr-user-main { min-width: 0; }
+    .xfr-list-name { font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .xfr-list-handle { color: var(--xfr-muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .xfr-row-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 5px; }
+    .xfr-mini-chip { color: var(--xfr-muted); font-size: 11px; padding: 2px 6px; border-radius: 999px; background: var(--xfr-subtle); }
+    .xfr-empty { padding: 24px 16px; color: var(--xfr-muted); text-align: center; }
+
+    .xfr-detail-pane {
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto auto minmax(0,1fr);
+      background: var(--xfr-bg);
     }
 
     .xfr-profile {
       display: grid;
-      grid-template-columns: 48px minmax(0, 1fr) auto;
-      gap: 10px;
+      grid-template-columns: 64px minmax(0,1fr) auto;
+      gap: 14px;
       align-items: start;
-      padding: 14px 16px 12px;
-      border-bottom: 1px solid var(--xfr-border, #eff3f4);
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--xfr-border);
+      background: var(--xfr-bg);
     }
-    .xfr-avatar {
-      width: 48px;
-      height: 48px;
-      border-radius: 50%;
-      object-fit: cover;
-      background: var(--xfr-placeholder-bg, #eff3f4);
-    }
-    .xfr-identity { min-width: 0; }
-    .xfr-name-row { display: flex; min-width: 0; align-items: baseline; gap: 7px; }
-    .xfr-name {
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-size: 16px;
-      font-weight: 800;
-    }
-    .xfr-handle {
-      flex: none;
-      color: var(--xfr-muted, #536471);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      max-width: 42%;
-    }
-    .xfr-bio {
-      margin-top: 4px;
-      white-space: pre-wrap;
-      display: -webkit-box;
-      -webkit-line-clamp: 3;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-    }
-    .xfr-profile-link {
-      width: 34px;
-      height: 34px;
-      padding: 0;
-      display: grid;
-      place-items: center;
-      font-size: 16px;
-    }
+
+    .xfr-avatar { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; background: var(--xfr-subtle); }
+    .xfr-name-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+    .xfr-name { font-size: 19px; font-weight: 800; color: var(--xfr-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-decoration: none; }
+    .xfr-handle { color: var(--xfr-muted); white-space: nowrap; text-decoration: none; }
+    .xfr-name:hover, .xfr-handle:hover { text-decoration: underline; }
+    .xfr-bio { margin-top: 5px; white-space: pre-wrap; max-width: 820px; }
+    .xfr-profile-actions { display: flex; gap: 8px; }
+    .xfr-danger { border-color: #f4212e; color: #f4212e; }
 
     .xfr-summary {
       display: flex;
-      flex-wrap: wrap;
       gap: 7px;
-      padding: 10px 16px;
-      border-bottom: 1px solid var(--xfr-border, #eff3f4);
+      flex-wrap: wrap;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--xfr-border);
+      background: var(--xfr-bg);
     }
-    .xfr-chip {
-      display: inline-flex;
-      align-items: center;
-      min-height: 28px;
-      padding: 4px 9px;
-      border-radius: 999px;
-      background: var(--xfr-subtle, #f7f9f9);
-      color: var(--xfr-muted, #536471);
-      font-size: 13px;
-    }
-    .xfr-chip-strong { color: var(--xfr-fg, #0f1419); font-weight: 700; }
 
-    .xfr-section {
-      padding: 14px 16px 16px;
-      border-bottom: 1px solid var(--xfr-border, #eff3f4);
-    }
-    .xfr-section-head {
-      display: flex;
-      align-items: baseline;
-      gap: 8px;
-      margin-bottom: 10px;
-    }
-    .xfr-section-title { font-size: 16px; font-weight: 800; }
-    .xfr-section-note { color: var(--xfr-muted, #536471); font-size: 12px; }
-    .xfr-muted { color: var(--xfr-muted, #536471); }
+    .xfr-chip { font-size: 12px; padding: 4px 8px; border-radius: 999px; background: var(--xfr-subtle); color: var(--xfr-muted); }
 
-    .xfr-media-grid {
+    .xfr-detail-grid {
+      min-height: 0;
+      height: 100%;
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 3px;
+      grid-template-columns: minmax(0,1.7fr) minmax(260px,.8fr);
       overflow: hidden;
-      border-radius: 14px;
-      background: var(--xfr-border, #eff3f4);
-    }
-    .xfr-media-placeholder {
-      position: relative;
-      aspect-ratio: 1;
-      display: grid;
-      place-items: center;
-      background: var(--xfr-placeholder-bg, #eff3f4);
-      color: var(--xfr-muted, #536471);
-      font-size: 11px;
-    }
-    .xfr-media-placeholder:first-child::after {
-      content: '接続待ち';
-      position: absolute;
-      inset: auto 6px 6px;
-      text-align: center;
+      align-items: stretch;
     }
 
-    .xfr-bookmarks-placeholder {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 7px;
-    }
-    .xfr-bookmark-tile {
-      aspect-ratio: 4 / 3;
-      border-radius: 12px;
-      background: var(--xfr-placeholder-bg, #eff3f4);
-      border: 1px solid var(--xfr-border, #eff3f4);
-    }
-
-    .xfr-utils {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 7px;
-      padding: 12px 16px 18px;
-    }
-    .xfr-utils button { font-size: 12px; padding: 6px 10px; color: var(--xfr-muted, #536471); }
-    .xfr-status {
-      width: 100%;
-      color: var(--xfr-muted, #536471);
-      font-size: 12px;
+    .xfr-primary-detail,
+    .xfr-side-detail {
+      min-width: 0;
+      min-height: 0;
+      max-height: 100%;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
+      scrollbar-color: var(--xfr-scroll) transparent;
+      touch-action: pan-y;
     }
 
-    .xfr-footer {
-      flex: none;
-      display: grid;
-      grid-template-columns: auto 1fr 1fr 1fr auto;
-      gap: 7px;
-      align-items: center;
-      padding: 10px 12px max(10px, env(safe-area-inset-bottom));
-      border-top: 1px solid var(--xfr-border, #eff3f4);
-      background: var(--xfr-elevated, #fff);
-      box-shadow: 0 -8px 22px var(--xfr-footer-shadow, rgba(0,0,0,.04));
-      backdrop-filter: blur(14px);
-    }
-    .xfr-footer button { min-height: 44px; border-radius: 12px; }
-    .xfr-nav { width: 44px; padding: 0; font-size: 17px; }
-    .xfr-action { position: relative; }
-    .xfr-keep { border-color: var(--xfr-keep, rgba(0,160,80,.55)); }
-    .xfr-later { border-color: var(--xfr-later, rgba(180,145,0,.55)); }
-    .xfr-remove { border-color: var(--xfr-remove, rgba(220,40,70,.55)); }
-    .xfr-action[data-selected="true"] { background: var(--xfr-selected, rgba(29,155,240,.12)); }
-    .xfr-kbd {
-      display: inline-block;
-      margin-left: 4px;
-      padding: 0 4px;
-      border: 1px solid var(--xfr-border-strong, #cfd9de);
-      border-radius: 4px;
-      color: var(--xfr-muted, #536471);
-      font-size: 10px;
-      line-height: 16px;
-      vertical-align: 1px;
-    }
+    .xfr-primary-detail { border-right: 1px solid var(--xfr-border); }
+    .xfr-section { padding: 16px 18px 20px; border-bottom: 1px solid var(--xfr-border); }
+    .xfr-section-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+    .xfr-section-title { font-size: 16px; font-weight: 800; }
+    .xfr-section-note { font-size: 12px; color: var(--xfr-muted); }
 
-    .xfr-empty {
-      min-height: 55vh;
-      display: grid;
-      place-items: center;
-      padding: 30px;
-      text-align: center;
-      color: var(--xfr-muted, #536471);
-    }
-    .xfr-empty strong { display: block; margin-bottom: 6px; color: var(--xfr-fg, #0f1419); font-size: 16px; }
+    .xfr-media-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 3px; border-radius: 14px; overflow: hidden; }
+    .xfr-media-placeholder { aspect-ratio: 1; display: grid; place-items: center; background: var(--xfr-subtle); color: var(--xfr-muted); }
+    .xfr-media-grid a { display: block; aspect-ratio: 1; overflow: hidden; }
+    .xfr-media-grid img { width: 100%; height: 100%; object-fit: cover; }
 
-    @media (max-width: 520px) {
-      .xfr-footer { grid-template-columns: 36px 1fr 1fr 1fr 36px; gap: 4px; padding-inline: 6px; }
-      .xfr-nav { width: 36px; }
-      .xfr-kbd { display: none; }
-      .xfr-action { padding-inline: 5px; font-size: 12px; }
+    .xfr-bookmarks-placeholder { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; padding-bottom: 18px; }
+    .xfr-bookmark-tile { aspect-ratio: 4/3; border-radius: 10px; background: var(--xfr-subtle); color: var(--xfr-fg); text-decoration: none; overflow: hidden; border: 1px solid var(--xfr-border); }
+    .xfr-bookmark-tile img { width: 100%; height: 100%; object-fit: cover; }
+
+    .xfr-list-options { display: grid; gap: 6px; }
+    .xfr-list-option { display: flex; align-items: center; gap: 9px; padding: 8px 9px; border-radius: 10px; cursor: pointer; }
+    .xfr-list-option:hover { background: var(--xfr-hover); }
+    .xfr-list-option input { width: 17px; height: 17px; accent-color: #1d9bf0; }
+
+    @media (max-width: 1050px) {
+      .xfr-main { grid-template-columns: 280px minmax(0,1fr); }
+      .xfr-detail-pane { overflow-y: auto; display: block; overscroll-behavior: contain; }
+      .xfr-detail-grid { grid-template-columns: 1fr; overflow: visible; height: auto; }
+      .xfr-primary-detail, .xfr-side-detail { overflow: visible; max-height: none; }
+      .xfr-primary-detail { border-right: 0; }
+      .xfr-media-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
     }
   `;
 
-  function isFollowingRoute() {
-    return ROUTE_RE.test(location.pathname);
-  }
+  function isRoute() { return ROUTE_RE.test(location.pathname); }
 
-  function usableColumnRect(node) {
-    if (!node) return null;
-    const rect = node.getBoundingClientRect();
-    if (rect.width < 480 || rect.width > 760) return null;
-    if (rect.right <= 0 || rect.left >= window.innerWidth) return null;
-    return rect;
-  }
-
-  function columnFromTimeline() {
-    const seed = document.querySelector('[data-testid="UserCell"]') || document.querySelector('[role="tablist"]');
-    if (!seed) return null;
-
-    let node = seed;
-    let best = null;
-    for (let depth = 0; node && node !== document.documentElement && depth < 14; depth += 1, node = node.parentElement) {
-      const rect = usableColumnRect(node);
-      if (!rect) continue;
-      if (rect.height < Math.min(500, window.innerHeight * 0.6)) continue;
-      best = node;
-    }
-    return best;
-  }
-
-  function primaryColumn() {
+  function primaryRect() {
     const direct = document.querySelector('[data-testid="primaryColumn"]');
-    if (usableColumnRect(direct)) return direct;
+    if (direct) {
+      const rect = direct.getBoundingClientRect();
+      if (rect.width >= 480 && rect.width <= 760 && rect.height > 300) return rect;
+    }
 
-    const timelineColumn = columnFromTimeline();
-    if (timelineColumn) return timelineColumn;
-
-    const main = document.querySelector('main[role="main"]');
-    if (!main) return null;
-
-    const descendants = Array.from(main.querySelectorAll(':scope > div, :scope > div > div'));
-    return descendants.find((node) => usableColumnRect(node)) || (usableColumnRect(main) ? main : null);
-  }
-
-  function parseRgb(value) {
-    if (!value) return null;
-    const match = value.match(/rgba?\(\s*([\d.]+)[, ]+\s*([\d.]+)[, ]+\s*([\d.]+)(?:\s*[,\/]\s*([\d.]+))?\s*\)/i);
-    if (!match) return null;
-    return {
-      r: Number(match[1]),
-      g: Number(match[2]),
-      b: Number(match[3]),
-      a: match[4] === undefined ? 1 : Number(match[4]),
-    };
-  }
-
-  function luminance({ r, g, b }) {
-    return (r * 299 + g * 587 + b * 114) / 1000;
-  }
-
-  function opaqueBackground(node) {
-    let current = node;
-    for (let depth = 0; current && depth < 8; depth += 1, current = current.parentElement) {
-      const value = getComputedStyle(current).backgroundColor;
-      const rgb = parseRgb(value);
-      if (rgb && rgb.a > 0.08) return { value, rgb };
+    const cell = document.querySelector('[data-testid="UserCell"]');
+    let node = cell;
+    while (node && node !== document.documentElement) {
+      const rect = node.getBoundingClientRect();
+      if (rect.width >= 480 && rect.width <= 760 && rect.height > 400) return rect;
+      node = node.parentElement;
     }
     return null;
   }
 
-  function detectTheme() {
-    const column = primaryColumn();
-    const candidates = [column, document.body, document.documentElement].filter(Boolean);
-    let background = null;
-
-    for (const candidate of candidates) {
-      background = opaqueBackground(candidate);
-      if (background) break;
+  function navigationRight() {
+    const home = document.querySelector('[data-testid="AppTabBar_Home_Link"]');
+    if (!home) return 0;
+    let right = home.getBoundingClientRect().right;
+    let node = home;
+    for (let depth = 0; node && depth < 10; depth += 1, node = node.parentElement) {
+      const rect = node.getBoundingClientRect();
+      const style = getComputedStyle(node);
+      if ((style.position === 'fixed' || style.position === 'sticky') && rect.width > 80 && rect.width < 460) {
+        right = Math.max(right, rect.right);
+      }
     }
+    return right;
+  }
 
-    if (!background) {
-      background = { value: 'rgb(255, 255, 255)', rgb: { r: 255, g: 255, b: 255, a: 1 } };
+  function workspaceLeft() {
+    const navRight = navigationRight();
+    const primary = primaryRect();
+    if (primary && primary.left > Math.max(120, navRight - 12) && primary.left < window.innerWidth * .45) {
+      return Math.round(primary.left);
     }
+    const fallback = Math.max(navRight + 18, window.innerWidth * .235);
+    return Math.round(Math.min(fallback, window.innerWidth * .34));
+  }
 
-    const level = luminance(background.rgb);
-    const dark = level < 128;
-    const dim = dark && level > 12;
-    return { ...background, dark, dim };
+  function applyGeometry() {
+    if (!root) return;
+    const left = workspaceLeft();
+    const primary = primaryRect();
+    const closedWidth = Math.max(500, Math.round(primary?.width || 600));
+    root.style.left = `${left}px`;
+    root.style.right = 'auto';
+    root.style.width = state.open
+      ? `${Math.max(560, window.innerWidth - left)}px`
+      : `${Math.min(closedWidth, window.innerWidth - left)}px`;
   }
 
   function applyTheme() {
     if (!host) return;
-    const theme = detectTheme();
-    const signature = `${theme.value}|${theme.dark}|${theme.dim}`;
-    if (signature === lastThemeSignature) return;
-    lastThemeSignature = signature;
-
-    host.style.setProperty('--xfr-color-scheme', theme.dark ? 'dark' : 'light');
-    host.style.setProperty('--xfr-bg', theme.value);
-
-    if (theme.dark) {
-      const dimBg = '#15202b';
-      const blackBg = '#000000';
-      const normalizedBg = theme.dim ? dimBg : blackBg;
-      host.style.setProperty('--xfr-bg', normalizedBg);
-      host.style.setProperty('--xfr-elevated', theme.dim ? 'rgba(21,32,43,.96)' : 'rgba(0,0,0,.96)');
-      host.style.setProperty('--xfr-fg', '#e7e9ea');
-      host.style.setProperty('--xfr-muted', theme.dim ? '#8899a6' : '#71767b');
-      host.style.setProperty('--xfr-border', theme.dim ? '#38444d' : '#2f3336');
-      host.style.setProperty('--xfr-border-strong', theme.dim ? '#536471' : '#536471');
-      host.style.setProperty('--xfr-hover', 'rgba(239,243,244,.10)');
-      host.style.setProperty('--xfr-subtle', theme.dim ? 'rgba(255,255,255,.055)' : '#16181c');
-      host.style.setProperty('--xfr-placeholder-bg', theme.dim ? '#22303c' : '#202327');
-      host.style.setProperty('--xfr-scroll-thumb', theme.dim ? '#536471' : '#333639');
-      host.style.setProperty('--xfr-shadow', '0 3px 18px rgba(0,0,0,.38)');
-      host.style.setProperty('--xfr-footer-shadow', 'rgba(0,0,0,.28)');
-      host.style.setProperty('--xfr-selected', 'rgba(29,155,240,.16)');
-      host.style.setProperty('--xfr-keep', 'rgba(0,186,124,.72)');
-      host.style.setProperty('--xfr-later', 'rgba(255,212,0,.62)');
-      host.style.setProperty('--xfr-remove', 'rgba(249,24,128,.65)');
-    } else {
-      host.style.setProperty('--xfr-bg', '#ffffff');
-      host.style.setProperty('--xfr-elevated', 'rgba(255,255,255,.96)');
-      host.style.setProperty('--xfr-fg', '#0f1419');
-      host.style.setProperty('--xfr-muted', '#536471');
-      host.style.setProperty('--xfr-border', '#eff3f4');
-      host.style.setProperty('--xfr-border-strong', '#cfd9de');
-      host.style.setProperty('--xfr-hover', '#f7f9f9');
-      host.style.setProperty('--xfr-subtle', '#f7f9f9');
-      host.style.setProperty('--xfr-placeholder-bg', '#eff3f4');
-      host.style.setProperty('--xfr-scroll-thumb', '#cfd9de');
-      host.style.setProperty('--xfr-shadow', '0 2px 10px rgba(0,0,0,.10)');
-      host.style.setProperty('--xfr-footer-shadow', 'rgba(0,0,0,.05)');
-      host.style.setProperty('--xfr-selected', 'rgba(29,155,240,.10)');
-      host.style.setProperty('--xfr-keep', 'rgba(0,160,80,.55)');
-      host.style.setProperty('--xfr-later', 'rgba(180,145,0,.55)');
-      host.style.setProperty('--xfr-remove', 'rgba(220,40,70,.55)');
-    }
-  }
-
-  function scheduleTheme() {
-    clearTimeout(themeTimer);
-    themeTimer = setTimeout(applyTheme, 90);
-  }
-
-  function positionHost() {
-    if (!host) return;
-    const primary = primaryColumn();
-    if (!primary) return;
-    const rect = primary.getBoundingClientRect();
-    host.style.left = `${Math.round(Math.max(0, rect.left))}px`;
-    host.style.width = `${Math.round(Math.min(window.innerWidth - Math.max(0, rect.left), rect.width))}px`;
-  }
-
-  function extensionAlive() {
-    try {
-      return Boolean(chrome.runtime?.id);
-    } catch {
-      return false;
-    }
-  }
-
-  async function storageGet(key) {
-    if (!extensionAlive()) return {};
-    try {
-      return await chrome.storage.local.get(key);
-    } catch {
-      return {};
-    }
-  }
-
-  async function storageSet(value) {
-    if (!extensionAlive()) return false;
-    try {
-      await chrome.storage.local.set(value);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  function mount() {
-    if (host || !isFollowingRoute() || !document.documentElement) return;
-
-    host = document.createElement('div');
-    host.id = HOST_ID;
-    shadow = host.attachShadow({ mode: 'open' });
-
-    const style = document.createElement('style');
-    style.textContent = css;
-    shadow.append(style);
-
-    root = document.createElement('div');
-    root.className = 'xfr-shell';
-    root.dataset.open = 'false';
-    shadow.append(root);
-
-    document.documentElement.append(host);
-    lastThemeSignature = '';
-    positionHost();
-    applyTheme();
-    render();
-    scanVisibleUsers();
-  }
-
-  function unmount() {
-    host?.remove();
-    host = null;
-    shadow = null;
-    root = null;
-    reviewMode = false;
-    users = [];
-    userKeys = new Set();
-    currentIndex = 0;
-    lastThemeSignature = '';
-  }
-
-  function parseUserCell(cell) {
-    const spans = Array.from(cell.querySelectorAll('span'));
-    const handleEl = spans.find((el) => /^@[A-Za-z0-9_]{1,15}$/.test((el.textContent || '').trim()));
-    if (!handleEl) return null;
-
-    const handle = (handleEl.textContent || '').trim();
-    const username = handle.slice(1);
-    const profilePath = `/${username}`;
-    const profileLink = Array.from(cell.querySelectorAll('a[href]')).find((a) => a.getAttribute('href') === profilePath);
-    const avatar = Array.from(cell.querySelectorAll('img')).find((img) => /profile_images|pbs\.twimg\.com/i.test(img.src || '')) || cell.querySelector('img');
-
-    const lines = (cell.innerText || '')
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean);
-    const handleIndex = lines.findIndex((line) => line === handle);
-    const name = handleIndex > 0 ? lines[handleIndex - 1] : username;
-    const ignored = new Set([name, handle, 'Follow', 'Following', 'Follows you', 'フォロー', 'フォロー中', 'フォローされています']);
-    const bioLines = lines.filter((line, index) => index > handleIndex && !ignored.has(line) && !/^\d+[,.\d]*\s*(Followers?|Following)$/i.test(line));
-
-    return {
-      key: handle.toLowerCase(),
-      username,
-      handle,
-      name,
-      bio: bioLines.slice(0, 4).join('\n'),
-      avatarUrl: avatar?.src || '',
-      profileUrl: new URL(profileLink?.getAttribute('href') || profilePath, location.origin).href,
+    const bg = getComputedStyle(document.body).backgroundColor || 'rgb(0,0,0)';
+    const match = bg.match(/rgba?\((\d+)[, ]+\s*(\d+)[, ]+\s*(\d+)/);
+    const lum = match ? (Number(match[1]) * 299 + Number(match[2]) * 587 + Number(match[3]) * 114) / 1000 : 0;
+    const dark = lum < 128;
+    const dim = dark && lum > 12;
+    const vars = dark ? {
+      '--xfr-scheme': 'dark',
+      '--xfr-bg': dim ? '#15202b' : '#000',
+      '--xfr-elevated': dim ? 'rgba(21,32,43,.96)' : 'rgba(0,0,0,.96)',
+      '--xfr-fg': '#e7e9ea',
+      '--xfr-muted': dim ? '#8899a6' : '#71767b',
+      '--xfr-border': dim ? '#38444d' : '#2f3336',
+      '--xfr-border-strong': '#536471',
+      '--xfr-subtle': dim ? 'rgba(255,255,255,.06)' : '#16181c',
+      '--xfr-hover': 'rgba(239,243,244,.10)',
+      '--xfr-selected': 'rgba(29,155,240,.14)',
+      '--xfr-scroll': '#536471',
+    } : {
+      '--xfr-scheme': 'light',
+      '--xfr-bg': '#fff',
+      '--xfr-elevated': 'rgba(255,255,255,.96)',
+      '--xfr-fg': '#0f1419',
+      '--xfr-muted': '#536471',
+      '--xfr-border': '#eff3f4',
+      '--xfr-border-strong': '#cfd9de',
+      '--xfr-subtle': '#f7f9f9',
+      '--xfr-hover': '#f7f9f9',
+      '--xfr-selected': 'rgba(29,155,240,.10)',
+      '--xfr-scroll': '#cfd9de',
     };
+    Object.entries(vars).forEach(([key, value]) => host.style.setProperty(key, value));
   }
 
-  function scanVisibleUsers() {
-    if (!isFollowingRoute()) return 0;
-    let added = 0;
-    document.querySelectorAll('[data-testid="UserCell"]').forEach((cell) => {
-      const user = parseUserCell(cell);
-      if (!user || userKeys.has(user.key)) return;
-      userKeys.add(user.key);
-      users.push(user);
-      added += 1;
-    });
-    if (currentIndex >= users.length) currentIndex = Math.max(0, users.length - 1);
-    if (added && root) render();
-    return added;
+  function scheduleLayout() {
+    clearTimeout(themeTimer);
+    themeTimer = setTimeout(() => {
+      applyTheme();
+      applyGeometry();
+    }, 60);
   }
 
-  async function loadDecisions() {
-    const stored = await storageGet(DECISION_KEY);
-    decisions = stored[DECISION_KEY] && typeof stored[DECISION_KEY] === 'object' ? stored[DECISION_KEY] : {};
-  }
-
-  async function saveDecision(user, decision) {
-    if (!user) return;
-    decisions[user.key] = { decision, reviewedAt: Date.now(), handle: user.handle, name: user.name };
-    await storageSet({ [DECISION_KEY]: decisions });
-    goToNextUndecided();
-  }
-
-  function goToNextUndecided() {
-    if (!users.length) return;
-    for (let step = 1; step <= users.length; step += 1) {
-      const index = (currentIndex + step) % users.length;
-      if (!decisions[users[index].key]) {
-        currentIndex = index;
-        render();
-        return;
-      }
-    }
-    move(1);
-  }
-
-  function move(delta) {
-    if (!users.length) return;
-    currentIndex = Math.max(0, Math.min(users.length - 1, currentIndex + delta));
-    render();
-  }
-
-  function el(tag, className, text) {
+  function el(tag, className = '', text) {
     const node = document.createElement(tag);
     if (className) node.className = className;
     if (text !== undefined) node.textContent = text;
@@ -589,208 +374,415 @@
     return node;
   }
 
-  function actionButton(label, key, decision, user, className) {
-    const node = button(label, () => void saveDecision(user, decision), `xfr-action ${className}`);
-    node.dataset.selected = decisions[user?.key]?.decision === decision ? 'true' : 'false';
-    node.append(el('span', 'xfr-kbd', key));
-    return node;
+  function profileLink(user, className, text) {
+    const link = el('a', className, text);
+    link.href = user.profileUrl || `${location.origin}/${user.username}`;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    return link;
   }
 
-  function renderMediaSection() {
-    const section = el('section', 'xfr-section');
-    const head = el('div', 'xfr-section-head');
-    head.append(el('div', 'xfr-section-title', '最近の画像・動画'));
-    head.append(el('div', 'xfr-section-note', 'UserMedia 接続待ち'));
-    section.append(head);
+  function seedFromDom() {
+    const map = new Map(state.users.map((user) => [user.key, user]));
+    document.querySelectorAll('[data-testid="UserCell"]').forEach((cell) => {
+      const handle = Array.from(cell.querySelectorAll('span'))
+        .map((span) => (span.textContent || '').trim())
+        .find((value) => /^@[A-Za-z0-9_]{1,15}$/.test(value));
+      if (!handle) return;
+      const username = handle.slice(1);
+      const lines = (cell.innerText || '').split('\n').map((value) => value.trim()).filter(Boolean);
+      const hi = lines.indexOf(handle);
+      const key = handle.toLowerCase();
+      if (map.has(key)) return;
+      map.set(key, {
+        id: '',
+        key,
+        handle,
+        username,
+        name: hi > 0 ? lines[hi - 1] : username,
+        bio: lines.slice(hi + 1).filter((value) => !['Following','フォロー中'].includes(value)).slice(0, 3).join('\n'),
+        avatarUrl: cell.querySelector('img')?.src || '',
+        profileUrl: `${location.origin}/${username}`,
+      });
+    });
+    state.users = Array.from(map.values());
+  }
 
+  async function loadState() {
+    seedFromDom();
+    try {
+      const stored = await chrome.storage.local.get(Object.values(KEYS));
+      if (Array.isArray(stored[KEYS.following]) && stored[KEYS.following].length) state.users = stored[KEYS.following];
+      state.bookmarks = stored[KEYS.bookmarks] || {};
+      state.lists = Array.isArray(stored[KEYS.lists]) ? stored[KEYS.lists] : [];
+      state.memberships = stored[KEYS.memberships] || {};
+      state.media = stored[KEYS.media] || {};
+    } catch {}
+    if (!state.selectedKey || !state.users.some((user) => user.key === state.selectedKey)) {
+      state.selectedKey = state.users[0]?.key || '';
+    }
+  }
+
+  function selectedUser() {
+    return state.users.find((user) => user.key === state.selectedKey) || null;
+  }
+
+  function filteredUsers() {
+    const q = state.search.trim().toLowerCase();
+    if (!q) return state.users;
+    return state.users.filter((user) => `${user.name} ${user.handle} ${user.bio}`.toLowerCase().includes(q));
+  }
+
+  function renderMedia(items) {
     const grid = el('div', 'xfr-media-grid');
-    for (let i = 0; i < 6; i += 1) grid.append(el('div', 'xfr-media-placeholder'));
-    section.append(grid);
-    return section;
+    if (!items.length) {
+      grid.append(el('div', 'xfr-media-placeholder', '取得中 / なし'));
+      return grid;
+    }
+    items.slice(0, 18).forEach((item) => {
+      const link = el('a');
+      link.href = item.postUrl || item.url;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      const img = el('img');
+      img.src = item.url;
+      img.alt = item.type === 'video' ? '動画' : '画像';
+      img.loading = 'lazy';
+      link.append(img);
+      grid.append(link);
+    });
+    return grid;
   }
 
-  function renderBookmarkSection() {
-    const section = el('section', 'xfr-section');
-    const head = el('div', 'xfr-section-head');
-    head.append(el('div', 'xfr-section-title', '自分がブックマークした投稿'));
-    head.append(el('div', 'xfr-section-note', 'Bookmarks 接続待ち'));
-    section.append(head);
-
-    const tiles = el('div', 'xfr-bookmarks-placeholder');
-    for (let i = 0; i < 3; i += 1) tiles.append(el('div', 'xfr-bookmark-tile'));
-    section.append(tiles);
-    return section;
+  function renderBookmarks(posts) {
+    const grid = el('div', 'xfr-bookmarks-placeholder');
+    if (!posts.length) {
+      const empty = el('div', 'xfr-bookmark-tile', 'なし');
+      empty.style.display = 'grid';
+      empty.style.placeItems = 'center';
+      grid.append(empty);
+      return grid;
+    }
+    posts.slice(0, 18).forEach((post) => {
+      const link = el('a', 'xfr-bookmark-tile');
+      link.href = post.url;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.title = post.text || '';
+      const media = post.media?.[0];
+      if (media?.url) {
+        const img = el('img');
+        img.src = media.url;
+        img.alt = '';
+        img.loading = 'lazy';
+        link.append(img);
+      } else {
+        const text = el('div', '', post.text || '投稿を開く');
+        text.style.padding = '9px';
+        text.style.fontSize = '11px';
+        link.append(text);
+      }
+      grid.append(link);
+    });
+    return grid;
   }
 
-  function renderUserBody(user) {
-    const frag = document.createDocumentFragment();
+  function postRequest(marker, action, payload = {}, timeout = 30000) {
+    seq += 1;
+    const id = `xfr-ui-${Date.now()}-${seq}`;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error(`${action} timed out`));
+      }, timeout);
+      pending.set(id, { resolve, reject, timer });
+      window.postMessage({ marker, type: 'request', id, action, payload }, '*');
+    });
+  }
+
+  async function toggleMembership(list, checked) {
+    const user = selectedUser();
+    if (!user || !list) return;
+    state.busy = true;
+    render();
+    try {
+      await postRequest(GQL_MARKER, 'toggle-list', {
+        username: user.username,
+        listId: list.id,
+        add: checked,
+      }, 45000);
+      const current = Array.isArray(state.memberships[user.key]) ? state.memberships[user.key].slice() : [];
+      state.memberships[user.key] = checked
+        ? [...current.filter((value) => String(value.id) !== String(list.id)), { id: list.id, name: list.name }]
+        : current.filter((value) => String(value.id) !== String(list.id));
+      await chrome.storage.local.set({ [KEYS.memberships]: state.memberships });
+    } catch (error) {
+      window.alert(`リスト更新に失敗しました: ${error.message}`);
+    } finally {
+      state.busy = false;
+      render();
+    }
+  }
+
+  async function unfollowSelected() {
+    const user = selectedUser();
+    if (!user?.id) return;
+    if (!window.confirm(`@${user.username} のフォローを解除しますか？`)) return;
+    state.busy = true;
+    render();
+    try {
+      await postRequest(ACTION_MARKER, 'unfollow', { userId: user.id }, 30000);
+      const index = state.users.findIndex((value) => value.key === user.key);
+      state.users = state.users.filter((value) => value.key !== user.key);
+      state.selectedKey = state.users[Math.min(index, state.users.length - 1)]?.key || '';
+      await chrome.storage.local.set({ [KEYS.following]: state.users });
+    } catch (error) {
+      window.alert(`フォロー解除に失敗しました: ${error.message}`);
+    } finally {
+      state.busy = false;
+      render();
+    }
+  }
+
+  function renderListPane() {
+    const pane = el('aside', 'xfr-list-pane');
+    const searchWrap = el('div', 'xfr-search-wrap');
+    const input = el('input', 'xfr-search');
+    input.type = 'search';
+    input.placeholder = `フォロー中を検索 (${state.users.length})`;
+    input.value = state.search;
+    input.addEventListener('input', () => {
+      state.search = input.value;
+      state.listScrollTop = 0;
+      render();
+      requestAnimationFrame(() => {
+        const next = shadow?.querySelector('.xfr-search');
+        next?.focus();
+        if (next) next.setSelectionRange(next.value.length, next.value.length);
+      });
+    });
+    searchWrap.append(input);
+    pane.append(searchWrap);
+
+    const list = el('div', 'xfr-user-list');
+    list.addEventListener('scroll', () => {
+      state.listScrollTop = list.scrollTop;
+    }, { passive: true });
+
+    const users = filteredUsers();
+    if (!users.length) {
+      list.append(el('div', 'xfr-empty', state.users.length ? '該当するユーザーはいません' : 'Followingを取得中…'));
+    }
+
+    users.forEach((user) => {
+      const row = button('', () => {
+        state.listScrollTop = list.scrollTop;
+        state.selectedKey = user.key;
+        render();
+      }, 'xfr-user-row');
+      row.dataset.selected = user.key === state.selectedKey ? 'true' : 'false';
+
+      const avatar = el('img', 'xfr-list-avatar');
+      avatar.src = user.avatarUrl || '';
+      avatar.alt = '';
+
+      const main = el('div', 'xfr-user-main');
+      main.append(el('div', 'xfr-list-name', user.name || user.username));
+      main.append(el('div', 'xfr-list-handle', user.handle || `@${user.username}`));
+      const meta = el('div', 'xfr-row-meta');
+      meta.append(el('span', 'xfr-mini-chip', `★ ${state.bookmarks[user.key]?.length || 0}`));
+      meta.append(el('span', 'xfr-mini-chip', `リスト ${state.memberships[user.key]?.length || 0}`));
+      main.append(meta);
+      row.append(avatar, main);
+      list.append(row);
+    });
+
+    pane.append(list);
+    requestAnimationFrame(() => {
+      if (!list.isConnected) return;
+      const max = Math.max(0, list.scrollHeight - list.clientHeight);
+      list.scrollTop = Math.min(state.listScrollTop, max);
+    });
+    return pane;
+  }
+
+  function renderDetailPane() {
+    const pane = el('section', 'xfr-detail-pane');
+    const user = selectedUser();
+    if (!user) {
+      pane.append(el('div', 'xfr-empty', '左の一覧からユーザーを選択してください'));
+      return pane;
+    }
 
     const profile = el('section', 'xfr-profile');
     const avatar = el('img', 'xfr-avatar');
-    avatar.src = user.avatarUrl;
+    avatar.src = user.avatarUrl || '';
     avatar.alt = '';
-    profile.append(avatar);
 
-    const identity = el('div', 'xfr-identity');
+    const identity = el('div');
     const nameRow = el('div', 'xfr-name-row');
-    nameRow.append(el('div', 'xfr-name', user.name));
-    nameRow.append(el('div', 'xfr-handle', user.handle));
+    nameRow.append(
+      profileLink(user, 'xfr-name', user.name || user.username),
+      profileLink(user, 'xfr-handle', user.handle || `@${user.username}`),
+    );
     identity.append(nameRow);
-    identity.append(el('div', 'xfr-bio', user.bio || 'プロフィール文なし'));
-    profile.append(identity);
+    if ((user.bio || '').trim()) identity.append(el('div', 'xfr-bio', user.bio));
 
-    const openProfile = button('↗', () => window.open(user.profileUrl, '_blank', 'noopener'), 'xfr-profile-link');
-    openProfile.title = 'プロフィールを開く';
-    profile.append(openProfile);
-    frag.append(profile);
+    const actions = el('div', 'xfr-profile-actions');
+    const unfollow = button('フォロー解除', () => void unfollowSelected(), 'xfr-danger');
+    unfollow.disabled = state.busy || !user.id;
+    actions.append(unfollow);
+    profile.append(avatar, identity, actions);
+    pane.append(profile);
 
     const summary = el('div', 'xfr-summary');
-    summary.append(el('span', 'xfr-chip xfr-chip-strong', 'リスト  —'));
-    summary.append(el('span', 'xfr-chip xfr-chip-strong', '★ ブックマーク  —'));
-    const previous = decisions[user.key]?.decision;
-    if (previous) {
-      const labels = { keep: '残す', later: '保留', remove: '解除候補' };
-      summary.append(el('span', 'xfr-chip', `前回: ${labels[previous] || previous}`));
-    }
-    frag.append(summary);
+    summary.append(el('span', 'xfr-chip', `リスト ${state.memberships[user.key]?.length || 0}`));
+    summary.append(el('span', 'xfr-chip', `★ ブックマーク ${state.bookmarks[user.key]?.length || 0}`));
+    pane.append(summary);
 
-    frag.append(renderMediaSection());
-    frag.append(renderBookmarkSection());
+    const grid = el('div', 'xfr-detail-grid');
+    const primary = el('div', 'xfr-primary-detail');
 
-    const utils = el('div', 'xfr-utils');
-    utils.append(button('表示中を再スキャン', () => {
-      scanVisibleUsers();
-      render();
-    }));
-    utils.append(button('さらに読み込む', () => {
-      window.scrollBy({ top: Math.max(window.innerHeight * 1.6, 1000), behavior: 'smooth' });
-      setTimeout(() => {
-        scanVisibleUsers();
-        render();
-      }, 1400);
-    }));
-    const reviewedCount = users.filter((u) => decisions[u.key]).length;
-    utils.append(el('div', 'xfr-status', `取得 ${users.length}人 / 判定済み ${reviewedCount}人。現在は判定のみ保存し、実際のフォロー解除は行いません。`));
-    frag.append(utils);
+    const mediaSection = el('section', 'xfr-section');
+    const mediaHead = el('div', 'xfr-section-head');
+    mediaHead.append(
+      el('div', 'xfr-section-title', '最近の画像・動画'),
+      el('div', 'xfr-section-note', state.media[user.key]?.updatedAt ? `${state.media[user.key]?.items?.length || 0}件` : '取得中'),
+    );
+    mediaSection.append(mediaHead, renderMedia(state.media[user.key]?.items || []));
+    primary.append(mediaSection);
 
-    return frag;
+    const bookmarkSection = el('section', 'xfr-section');
+    const bookmarkHead = el('div', 'xfr-section-head');
+    bookmarkHead.append(
+      el('div', 'xfr-section-title', '自分がブックマークした投稿'),
+      el('div', 'xfr-section-note', `${state.bookmarks[user.key]?.length || 0}件`),
+    );
+    bookmarkSection.append(bookmarkHead, renderBookmarks(state.bookmarks[user.key] || []));
+    primary.append(bookmarkSection);
+
+    const side = el('aside', 'xfr-side-detail');
+    const listSection = el('section', 'xfr-section');
+    const listHead = el('div', 'xfr-section-head');
+    listHead.append(el('div', 'xfr-section-title', 'リスト'), el('div', 'xfr-section-note', `${state.lists.length}件`));
+    listSection.append(listHead);
+
+    const options = el('div', 'xfr-list-options');
+    if (!state.lists.length) options.append(el('div', 'xfr-empty', 'リストを取得中…'));
+    const memberIds = new Set((state.memberships[user.key] || []).map((value) => String(value.id)));
+    state.lists.forEach((list) => {
+      const label = el('label', 'xfr-list-option');
+      const checkbox = el('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = memberIds.has(String(list.id));
+      checkbox.disabled = state.busy;
+      checkbox.addEventListener('change', () => void toggleMembership(list, checkbox.checked));
+      label.append(checkbox, el('span', '', list.name));
+      options.append(label);
+    });
+    listSection.append(options);
+    side.append(listSection);
+
+    grid.append(primary, side);
+    pane.append(grid);
+    return pane;
   }
 
   function render() {
     if (!root) return;
     root.replaceChildren();
-    root.dataset.open = reviewMode ? 'true' : 'false';
+    root.dataset.open = state.open ? 'true' : 'false';
+    applyGeometry();
 
-    const toggle = button('Review Mode', async () => {
-      await loadDecisions();
-      scanVisibleUsers();
-      reviewMode = true;
-      positionHost();
-      applyTheme();
+    root.append(button('Review Mode', async () => {
+      state.open = true;
+      await loadState();
       render();
-    }, 'xfr-toggle');
-    root.append(toggle);
+    }, 'xfr-toggle'));
 
-    const panel = el('div', 'xfr-panel');
-
-    const header = el('header', 'xfr-header');
-    header.append(el('div', 'xfr-title', 'Follow Review'));
-    header.append(el('div', 'xfr-progress', users.length ? `${currentIndex + 1} / ${users.length}` : '0 users'));
-    header.append(button('通常表示', () => {
-      reviewMode = false;
+    const workspace = el('div', 'xfr-workspace');
+    const top = el('header', 'xfr-topbar');
+    top.append(el('div', 'xfr-title', 'Follow Review'));
+    const close = button('通常表示', () => {
+      state.open = false;
       render();
-    }));
-    panel.append(header);
+    });
+    close.style.marginLeft = 'auto';
+    top.append(close);
+    workspace.append(top);
 
-    const body = el('main', 'xfr-body');
-    const user = users[currentIndex];
-    if (user) {
-      body.append(renderUserBody(user));
-    } else {
-      const empty = el('div', 'xfr-empty');
-      const message = el('div');
-      message.append(el('strong', '', 'フォロー相手をまだ取得できていません'));
-      message.append(el('div', '', '「通常表示」に戻ってフォロー一覧を少しスクロールしてから、Review Modeを開き直してください。'));
-      empty.append(message);
-      body.append(empty);
-    }
-    panel.append(body);
-
-    const footer = el('footer', 'xfr-footer');
-    footer.append(button('←', () => move(-1), 'xfr-nav'));
-    if (user) {
-      footer.append(actionButton('残す', 'K', 'keep', user, 'xfr-keep'));
-      footer.append(actionButton('保留', 'S', 'later', user, 'xfr-later'));
-      footer.append(actionButton('解除候補', 'D', 'remove', user, 'xfr-remove'));
-    } else {
-      footer.append(button('残す', () => {}, 'xfr-action'));
-      footer.append(button('保留', () => {}, 'xfr-action'));
-      footer.append(button('解除候補', () => {}, 'xfr-action'));
-    }
-    footer.append(button('→', () => move(1), 'xfr-nav'));
-    panel.append(footer);
-
-    root.append(panel);
+    const main = el('main', 'xfr-main');
+    main.append(renderListPane(), renderDetailPane());
+    workspace.append(main);
+    root.append(workspace);
   }
 
-  function scheduleScan() {
-    clearTimeout(scanTimer);
-    scanTimer = setTimeout(() => {
-      if (isFollowingRoute()) scanVisibleUsers();
-    }, 280);
+  async function refreshFromStorage() {
+    await loadState();
+    render();
   }
 
-  window.addEventListener('resize', () => {
-    positionHost();
-    scheduleTheme();
-  }, { passive: true });
+  function mount() {
+    if (host || !isRoute()) return;
+    host = document.createElement('div');
+    host.id = HOST_ID;
+    shadow = host.attachShadow({ mode: 'open' });
+    const style = el('style');
+    style.textContent = css;
+    shadow.append(style);
+    root = el('div', 'xfr-shell');
+    root.dataset.open = 'false';
+    shadow.append(root);
+    document.documentElement.append(host);
+    applyTheme();
+    applyGeometry();
+    void loadState().then(render);
+  }
 
+  function unmount() {
+    host?.remove();
+    host = null;
+    shadow = null;
+    root = null;
+    state.open = false;
+  }
+
+  window.addEventListener('resize', scheduleLayout, { passive: true });
   document.addEventListener('keydown', (event) => {
-    if (!reviewMode || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
-    const target = event.target;
-    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
-
-    const user = users[currentIndex];
-    const key = event.key.toLowerCase();
-    if (key === 'k') void saveDecision(user, 'keep');
-    else if (key === 's') void saveDecision(user, 'later');
-    else if (key === 'd') void saveDecision(user, 'remove');
-    else if (event.key === 'ArrowLeft') move(-1);
-    else if (event.key === 'ArrowRight') move(1);
-    else if (event.key === 'Escape') {
-      reviewMode = false;
+    if (state.open && event.key === 'Escape') {
+      state.open = false;
       render();
-    } else return;
-    event.preventDefault();
+    }
   }, true);
 
+  window.addEventListener('message', (event) => {
+    if (event.source !== window) return;
+    const message = event.data;
+    if (!message || (message.marker !== GQL_MARKER && message.marker !== ACTION_MARKER) || message.type !== 'response') return;
+    const job = pending.get(message.id);
+    if (!job) return;
+    clearTimeout(job.timer);
+    pending.delete(message.id);
+    if (message.ok) job.resolve(message.result);
+    else job.reject(new Error(message.error || 'request failed'));
+  });
+
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local') return;
+    if (Object.values(KEYS).some((key) => key in changes)) void refreshFromStorage();
+  });
+
   const observer = new MutationObserver(() => {
-    if (location.pathname !== lastPathname) {
-      lastPathname = location.pathname;
-      if (isFollowingRoute()) {
-        setTimeout(() => {
-          mount();
-          positionHost();
-          scheduleTheme();
-          scanVisibleUsers();
-        }, 120);
-      } else {
-        unmount();
-      }
+    if (location.pathname !== lastPath) {
+      lastPath = location.pathname;
+      if (isRoute()) setTimeout(mount, 80);
+      else unmount();
       return;
     }
-
-    if (isFollowingRoute()) {
-      if (!host) mount();
-      positionHost();
-      scheduleTheme();
-      scheduleScan();
-    }
+    if (isRoute() && !host) mount();
+    scheduleLayout();
   });
+  observer.observe(document.documentElement, { childList: true, subtree: true });
 
-  observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
-
-  void loadDecisions().then(() => {
-    if (isFollowingRoute()) mount();
-  });
+  if (isRoute()) mount();
 })();
