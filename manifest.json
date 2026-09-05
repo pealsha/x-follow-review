@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "X Follow Review",
-  "version": "0.3.0",
-  "description": "Add an in-page follow review mode to X and observe the GraphQL operations needed for richer review data.",
-  "permissions": ["storage", "webRequest"],
+  "version": "0.4.0",
+  "description": "Add an in-page follow review mode to X with automatic bookmarks, lists and media synchronization.",
+  "permissions": ["storage", "webRequest", "tabs"],
   "host_permissions": [
     "https://x.com/*",
     "https://twitter.com/*",
@@ -25,7 +25,7 @@
     },
     {
       "matches": ["https://x.com/*", "https://twitter.com/*"],
-      "js": ["bridge.js", "review-ui.js"],
+      "js": ["bridge.js", "review-ui.js", "auto-sync-client.js", "sync-worker.js"],
       "run_at": "document_start",
       "world": "ISOLATED"
     }
