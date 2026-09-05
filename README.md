@@ -25,10 +25,7 @@ Review ModeではXの左ナビを残し、その右側をレビュー用ワー�
 
 X Web自身が使っている内部GraphQLを、現在開いているXページのセッション内から直接呼びます。
 
-queryIdは固定せず、次の情報から実行時に発見します。
-
-1. Xが現在行っているGraphQL通信
-2. Xの現在のJavaScript bundle
+queryIdは固定せず、Xが現在行っているGraphQL通信と現在のJavaScript bundleから実行時に発見します。リスト系では、bundleから見つからない場合だけ現在確認できているqueryIdをフォールバックとして使用します。
 
 認証用ヘッダーはX自身のGraphQL通信からページ内メモリへ取得し、認証値をextension storageへ保存しません。
 
@@ -42,10 +39,22 @@ Review Modeを開くと次の順で動きます。
 2. Followingの取得開始後、`Bookmarks` と自分のListsを並行同期
 3. 一覧でユーザーを選択した時だけ、その人について
    - `UserMedia`
-   - `ListOwnerships`による自分のListsへの所属状態
+   - 自分のListsへの所属状態
    を取得
 
 そのため、全フォロー相手のMediaを最初から取得することはありません。
+
+## リスト取得・所属判定
+
+Xは2026年中頃に `ListOwnerships` を退役させたため、この拡張では依存しません。
+
+自分のリスト一覧は `ListsManagementPageTimeline` から取得します。選択ユーザーの所属判定は、現在のX仕様に追従するため次の順にフォールバックします。
+
+1. `ListsManagementPageTimeline` の管理用membership情報
+2. `ListMemberships`
+3. `ListMembers` を必要なリストだけ走査
+
+`ListMembers` の走査結果はページ内メモリにキャッシュし、同じリストを繰り返し最初から取得しません。また、List側の取得に失敗しても `UserMedia` の取得まで失敗扱いにしない設計です。
 
 ## リスト操作
 
@@ -100,16 +109,4 @@ git pull
 - 診断ログでは認証ヘッダーの存在有無のみ記録します
 - Review用のFollowing / Bookmarks / Lists / Mediaキャッシュは `chrome.storage.local` に保存します
 
-## 現在の段階
-
-- Following一覧 + 詳細ペインUI: 実装済み
-- Following GraphQL同期: 実装済み
-- Bookmarks GraphQL同期: 実装済み
-- Lists GraphQL同期: 実装済み
-- 選択ユーザーのUserMedia取得: 実装済み
-- 選択ユーザーのList所属確認: 実装済み
-- ListAddMember / ListRemoveMember: 実装済み
-- フォロー解除: 実装済み
-- バックグラウンド同期タブ: 廃止
-
-Xの内部GraphQLは非公開仕様のため、operation名・variables・feature flags等は将来変更される可能性があります。queryIdについては実行時発見で追従する設計です。
+Xの内部GraphQLは非公開仕様のため、operation名・variables・feature flags等は将来変更される可能性があります。
