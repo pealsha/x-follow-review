@@ -31,6 +31,11 @@
     return `xfr-${Date.now()}-${seq}`;
   }
 
+  function canonicalUserKey(value) {
+    const raw = String(value || '').trim().toLowerCase().replace(/^@/, '');
+    return raw ? `@${raw}` : '';
+  }
+
   function request(action, payload = {}, onProgress = null, timeoutMs = 10 * 60 * 1000) {
     const id = nextId();
     return new Promise((resolve, reject) => {
@@ -57,14 +62,40 @@
     } catch {}
   }
 
-  async function saveBookmarks() {
+  function groupBookmarks(source) {
     const byAuthor = {};
-    for (const post of bookmarks.values()) {
-      const key = String(post.authorKey || '').toLowerCase();
+    for (const post of source.values()) {
+      const key = canonicalUserKey(post.authorKey || post.username);
       if (!key) continue;
       (byAuthor[key] ||= []).push(post);
     }
-    try { await chrome.storage.local.set({ [KEYS.bookmarks]: byAuthor }); } catch {}
+    return byAuthor;
+  }
+
+  async function saveBookmarks(source = bookmarks, allowEmpty = false) {
+    const byAuthor = groupBookmarks(source);
+    if (!allowEmpty && !Object.keys(byAuthor).length) return false;
+    try {
+      await chrome.storage.local.set({ [KEYS.bookmarks]: byAuthor });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function hydrateBookmarks() {
+    if (bookmarks.size) return;
+    try {
+      const stored = await chrome.storage.local.get(KEYS.bookmarks);
+      const byAuthor = stored[KEYS.bookmarks];
+      if (!byAuthor || typeof byAuthor !== 'object') return;
+      for (const posts of Object.values(byAuthor)) {
+        if (!Array.isArray(posts)) continue;
+        for (const post of posts) {
+          if (post?.id) bookmarks.set(post.id, post);
+        }
+      }
+    } catch {}
   }
 
   function listIndexKey() {
@@ -104,13 +135,26 @@
     if (extrasStarted) return;
     extrasStarted = true;
 
+    const freshBookmarks = new Map();
     void request('sync-bookmarks', {}, (message) => {
-      for (const post of message.items || []) bookmarks.set(post.id, post);
-      void saveBookmarks();
+      for (const post of message.items || []) {
+        if (post?.id) freshBookmarks.set(post.id, post);
+      }
+      // Never replace a valid cache with an empty transient result. As soon as
+      // at least one bookmark is confirmed, publish the fresh snapshot.
+      if (freshBookmarks.size) void saveBookmarks(freshBookmarks);
     }).then(async (result) => {
-      for (const post of result.posts || []) bookmarks.set(post.id, post);
-      await saveBookmarks();
-      await setStatus(`ブックマーク同期完了: ${bookmarks.size}件`, 'bookmarks-done');
+      for (const post of result.posts || []) {
+        if (post?.id) freshBookmarks.set(post.id, post);
+      }
+      if (freshBookmarks.size) {
+        bookmarks.clear();
+        for (const [id, post] of freshBookmarks) bookmarks.set(id, post);
+        await saveBookmarks(bookmarks);
+        await setStatus(`ブックマーク同期完了: ${bookmarks.size}件`, 'bookmarks-done');
+      } else {
+        await setStatus('ブックマーク同期結果が0件だったため既存キャッシュを保持しました', 'bookmarks-cache-kept');
+      }
     }).catch((error) => void setStatus(`ブックマーク同期失敗: ${error.message}`, 'error'));
 
     void request('sync-lists').then(async (result) => {
@@ -128,9 +172,9 @@
     baseSyncRunning = true;
     extrasStarted = false;
     following.clear();
-    bookmarks.clear();
     listsCache = [];
     listIndexSignature = '';
+    await hydrateBookmarks();
     await setStatus('FollowingをGraphQLで取得中…', 'following');
 
     const extrasFallback = setTimeout(startExtras, 1800);
@@ -155,7 +199,7 @@
   }
 
   function currentHandle(shadow) {
-    return (shadow?.querySelector('.xfr-handle')?.textContent || '').trim().toLowerCase();
+    return canonicalUserKey(shadow?.querySelector('.xfr-handle')?.textContent || '');
   }
 
   async function syncDetail(handle) {
@@ -163,7 +207,7 @@
     if (!username) return;
     try {
       const result = await request('sync-detail', { username, viewerId });
-      const key = `@${username}`.toLowerCase();
+      const key = canonicalUserKey(username);
       const stored = await chrome.storage.local.get([KEYS.media, KEYS.memberships]);
       const media = stored[KEYS.media] && typeof stored[KEYS.media] === 'object' ? stored[KEYS.media] : {};
       const memberships = stored[KEYS.memberships] && typeof stored[KEYS.memberships] === 'object' ? stored[KEYS.memberships] : {};
