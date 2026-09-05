@@ -12,10 +12,12 @@ Review ModeではXの左ナビを残し、その右側をレビュー用ワー�
   - 名前 / @handle
   - ブックマーク件数
   - 所属リスト数
+  - 相手が自分をフォローしているか（フォローされています / 被フォローなし）
   - 検索
   - 独立スクロール
 - 右側: 選択ユーザーの詳細
   - プロフィール
+  - 被フォロー状態
   - 最近の画像・動画
   - 自分がブックマークした投稿
   - 自分のX Listsと所属状態
@@ -24,6 +26,8 @@ Review ModeではXの左ナビを残し、その右側をレビュー用ワー�
 - Xのライト / Dim / Lights outテーマに追従
 
 プロフィール上部の名前または `@handle` をクリックすると、その人のXプロフィールを新しいタブで開きます。
+
+Following一覧の補助情報は `★ ブックマーク数 → リスト数 → 被フォロー状態` の順で固定表示します。
 
 ## データ取得方式
 
@@ -34,6 +38,8 @@ X Web自身が使っている内部GraphQLを、現在開いているXページ�
 queryIdはXが現在行っているGraphQL通信とJavaScript bundleから実行時に発見し、見つからない場合だけ既知のqueryIdをフォールバックとして使用します。発見済みqueryIdはローカルにキャッシュし、400/404になった場合だけ再探索します。
 
 認証用ヘッダーはX自身のGraphQL通信からページ内メモリへ取得し、認証値をextension storageへ保存しません。
+
+被フォロー状態はFollowing/User GraphQLレスポンスの関係情報から取得します。被フォロー表示のためにフォロー相手ごとの追加APIリクエストは行いません。
 
 ## キャッシュ優先同期
 
@@ -53,6 +59,21 @@ Review Modeは「前回のデータを即表示してから、裏で差分更新
    - 次の1人だけアイドル時に先読み
 
 FollowingやBookmarksのページング途中で発生するstorage書き込みは短時間まとめて保存し、UIの不要な再描画も減らしています。
+
+## 強制再同期 / キャッシュ初期化
+
+Review Mode上部にメンテナンス操作を用意しています。
+
+- `強制再同期`
+  - 現在の表示用キャッシュは残す
+  - Bookmarksを全件同期する
+  - ListMembers TTLを無効化して全リストを再取得する
+  - Mediaも取り直す
+  - ページ内メモリキャッシュも確実に捨てるため、Xタブを1回再読み込みしてReview Modeを自動再開する
+- `キャッシュ初期化`
+  - Follow ReviewのFollowing / Bookmarks / Lists / ListMembers / Media / 同期メタデータを削除
+  - 保存済みqueryIdキャッシュも削除
+  - Xタブを再読み込みして最初から取得し直す
 
 ## リスト取得・所属判定
 
@@ -83,12 +104,14 @@ FollowingやBookmarksのページング途中で発生するstorage書き込み�
 
 ## 構成
 
-通常動作に必要なコードは役割ごとに集約しています。
+通常動作に必要なコードは役割ごとに分けています。
 
 - `review-ui.js`: Review ModeのUI、テーマ、レイアウト、スクロール管理
 - `graphql-page.js`: Xページ内で動くGraphQL Adapter、差分取得、queryIdキャッシュ
 - `graphql-client.js`: キャッシュ優先同期、storage更新、ListMembersキャッシュ、Media先読み
 - `graphql-bootstrap.js`: Bookmarks遅延chunkなどXの現在のGraphQL情報を早期捕捉
+- `relationship-capture.js` / `relationship-client.js` / `followback-ui.js`: 被フォロー状態の取得・保存・表示
+- `sync-controls.js` / `cache-control-page.js`: 強制再同期とキャッシュ初期化
 - `graphql-xhr.js`: XHRから現在のGraphQL認証情報をページ内メモリへ捕捉
 - `actions-page.js`: フォロー解除などGraphQL外の操作
 - `page-hook.js` / `bridge.js` / `background.js` / `probe.*`: 開発用GraphQL診断
