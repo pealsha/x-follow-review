@@ -3,6 +3,10 @@
   const STYLE_ID = 'xfr-ui-polish-style';
   let currentShadow = null;
   let observer = null;
+  let boundList = null;
+  let boundSearch = null;
+  let listScrollTop = 0;
+  let lastSearchValue = '';
 
   const css = `
     /* The workspace itself never scrolls the X page. Each review pane owns its
@@ -112,14 +116,51 @@
     }
   }
 
+  function bindFollowingScroll(shadow) {
+    const list = shadow.querySelector('.xfr-user-list');
+    if (list && list !== boundList) {
+      boundList = list;
+
+      requestAnimationFrame(() => {
+        if (!list.isConnected || list !== boundList) return;
+        const max = Math.max(0, list.scrollHeight - list.clientHeight);
+        list.scrollTop = Math.min(listScrollTop, max);
+      });
+
+      list.addEventListener('scroll', () => {
+        if (list === boundList) listScrollTop = list.scrollTop;
+      }, { passive: true });
+    }
+
+    const search = shadow.querySelector('.xfr-search');
+    if (search && search !== boundSearch) {
+      boundSearch = search;
+      lastSearchValue = search.value;
+      search.addEventListener('input', () => {
+        if (search.value === lastSearchValue) return;
+        lastSearchValue = search.value;
+        listScrollTop = 0;
+      }, { passive: true });
+    }
+  }
+
+  function polish(shadow) {
+    removeSyncSection(shadow);
+    bindFollowingScroll(shadow);
+  }
+
   function install(shadow) {
     if (!shadow || shadow === currentShadow) {
-      if (shadow) removeSyncSection(shadow);
+      if (shadow) polish(shadow);
       return;
     }
 
     observer?.disconnect();
     currentShadow = shadow;
+    boundList = null;
+    boundSearch = null;
+    listScrollTop = 0;
+    lastSearchValue = '';
 
     if (!shadow.getElementById(STYLE_ID)) {
       const style = document.createElement('style');
@@ -128,8 +169,8 @@
       shadow.append(style);
     }
 
-    removeSyncSection(shadow);
-    observer = new MutationObserver(() => removeSyncSection(shadow));
+    polish(shadow);
+    observer = new MutationObserver(() => polish(shadow));
     observer.observe(shadow, { childList: true, subtree: true });
   }
 
