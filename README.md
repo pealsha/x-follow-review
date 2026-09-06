@@ -1,160 +1,131 @@
 # X Follow Review
 
-Xのフォロー整理を、Xの画面内だけで完結させるChrome拡張です。
+X の Following を整理するための Chrome 拡張です。
 
-`https://x.com/<username>/following` に `Review Mode` を追加し、通常のFollowing一覧に近い一覧からユーザーを選ぶと、右側にその人の詳細情報を表示します。
+X の Following ページに `Review Mode` を追加し、フォロー中のユーザーを一覧で見ながら、その人の最近の投稿・ブックマーク・所属リストなどを確認して整理できます。
 
-## Review Mode
+> この拡張は現在ベータ版です。X の非公開 Web API を利用しているため、X 側の仕様変更で一時的に動作しなくなる可能性があります。
 
-Review ModeではXの左ナビを残し、その右側をレビュー用ワークスペースとして使います。
+## 主な機能
 
-- 左側: Following一覧
-  - 名前 / @handle
-  - ブックマーク件数
-  - 所属リスト数
-  - 相手が自分をフォローしているか（フォローされています / 被フォローなし）
-  - 検索
-  - 独立スクロール
-- 右側: 選択ユーザーの詳細
-  - プロフィール
-  - 被フォロー状態
-  - 最近の画像・動画
-  - 自分がブックマークした投稿
-  - 自分のX Listsと所属状態
-  - リストへの追加 / 削除
-  - フォロー解除
-- Xのライト / Dim / Lights outテーマに追従
+### Following を見ながら整理
 
-プロフィール上部の名前または `@handle` をクリックすると、その人のXプロフィールを新しいタブで開きます。
+Following 一覧に、通常の X ではまとめて見づらい情報を追加します。
 
-Following一覧の補助情報は `★ ブックマーク数 → リスト数 → 被フォロー状態` の順で固定表示します。
+- 名前 / `@handle`
+- 自分がその人の投稿をブックマークした件数
+- 所属している自分の X Lists の数
+- 相手が自分をフォローしているか
+- ユーザー検索
 
-## データ取得方式
+一覧は独立してスクロールでき、ユーザーを切り替えても作業位置を維持します。
 
-通常利用ではバックグラウンドタブを開きません。
+### 選択したユーザーの詳細
 
-X Web自身が使っている内部GraphQLを、現在開いているXページのセッション内から直接呼びます。
+一覧からユーザーを選ぶと、右側に詳細を表示します。
 
-queryIdはXが現在行っているGraphQL通信とJavaScript bundleから実行時に発見し、見つからない場合だけ既知のqueryIdをフォールバックとして使用します。発見済みqueryIdはローカルにキャッシュし、400/404になった場合だけ再探索します。
+- プロフィール
+- 最近の画像・動画
+- 自分がブックマークした投稿
+- 自分の Lists と所属状態
+- List への追加 / 削除
+- フォロー解除
 
-認証用ヘッダーはX自身のGraphQL通信からページ内メモリへ取得し、認証値をextension storageへ保存しません。
+名前または `@handle` をクリックすると、そのユーザーの X プロフィールを新しいタブで開きます。
 
-被フォロー状態はFollowing/User GraphQLレスポンスの関係情報から取得します。被フォロー表示のためにフォロー相手ごとの追加APIリクエストは行いません。
+### キャッシュ優先で高速表示
 
-## キャッシュ優先同期
+前回取得したデータを最初に表示し、その後で X の最新状態へ更新します。
 
-Review Modeは「前回のデータを即表示してから、裏で差分更新する」方式です。
+Bookmarks や Lists も差分取得・キャッシュを利用するため、毎回すべてを取り直さない設計です。
 
-1. `chrome.storage.local` のFollowing / Bookmarks / Lists / ListMembers / Mediaを即表示
-2. `Following` をバックグラウンドで更新
-3. `Bookmarks` は前回取得済みのpost IDに到達した時点で停止
-   - 通常は新しいブックマークだけ取得
-   - 7日ごとを目安に全件同期し、解除済みBookmarkとの整合性も取り直す
-4. Lists取得後、ListMembersキャッシュを利用して `userId -> 所属リスト一覧` を作成
-   - ListMembersは24時間キャッシュ
-   - キャッシュが新しければListMembersへのGraphQL通信は発生しない
-   - 古いリストだけ再取得する
-5. ユーザーを選択した時だけ `UserMedia` を取得
-   - Mediaは30分キャッシュ
-   - 次の1人だけアイドル時に先読み
+### メンテナンス
 
-FollowingやBookmarksのページング途中で発生するstorage書き込みは短時間まとめて保存し、UIの不要な再描画も減らしています。
+Review Mode 上部から次の操作ができます。
 
-## 強制再同期 / キャッシュ初期化
+- `強制再同期`: キャッシュ最適化を無視して X から最新データを取り直す
+- `キャッシュ初期化`: Follow Review が保存したデータを削除して最初から取得し直す
 
-Review Mode上部にメンテナンス操作を用意しています。
-
-- `強制再同期`
-  - 現在の表示用キャッシュは残す
-  - Bookmarksを全件同期する
-  - ListMembers TTLを無効化して全リストを再取得する
-  - Mediaも取り直す
-  - ページ内メモリキャッシュも確実に捨てるため、Xタブを1回再読み込みしてReview Modeを自動再開する
-- `キャッシュ初期化`
-  - Follow ReviewのFollowing / Bookmarks / Lists / ListMembers / Media / 同期メタデータを削除
-  - 保存済みqueryIdキャッシュも削除
-  - Xタブを再読み込みして最初から取得し直す
-
-## リスト取得・所属判定
-
-自分のリスト一覧は `ListsManagementPageTimeline` から取得します。
-
-全体の件数表示には各リストの `ListMembers` を逆引きして使います。取得結果は `chrome.storage.local` に24時間保存するため、Review Modeを開くたびに全リストを走査し直しません。
-
-個別詳細では、必要に応じて次の順で所属状態を確認します。
-
-1. `ListsManagementPageTimeline` のmembership情報
-2. `ListMemberships`
-3. キャッシュ済み `ListMembers`
-
-## リスト操作
-
-選択ユーザーの詳細画面に自分のリストをチェックボックスで表示します。
-
-- ON: `ListAddMember`
-- OFF: `ListRemoveMember`
-
-をXのGraphQL mutationで直接実行します。
-
-リストを変更した場合は、そのリストのListMembersキャッシュだけを無効化し、他のリストのキャッシュは維持します。
-
-## フォロー解除
-
-選択ユーザーの詳細画面からフォロー解除できます。確認ダイアログを挟んでから実行します。
-
-## 構成
-
-通常動作に必要なコードは役割ごとに分けています。
-
-- `review-ui.js`: Review ModeのUI、テーマ、レイアウト、スクロール管理
-- `graphql-page.js`: Xページ内で動くGraphQL Adapter、差分取得、queryIdキャッシュ
-- `graphql-client.js`: キャッシュ優先同期、storage更新、ListMembersキャッシュ、Media先読み
-- `graphql-bootstrap.js`: Bookmarks遅延chunkなどXの現在のGraphQL情報を早期捕捉
-- `relationship-capture.js` / `relationship-client.js` / `followback-ui.js`: 被フォロー状態の取得・保存・表示
-- `sync-controls.js` / `cache-control-page.js`: 強制再同期とキャッシュ初期化
-- `graphql-xhr.js`: XHRから現在のGraphQL認証情報をページ内メモリへ捕捉
-- `actions-page.js`: フォロー解除などGraphQL外の操作
-- `page-hook.js` / `bridge.js` / `background.js` / `probe.*`: 開発用GraphQL診断
+表示がおかしい場合や、X 側で直接 Lists などを大きく変更した場合に使えます。
 
 ## インストール
 
-最初の一度だけcloneします。
+現在は Chrome Web Store では配布していないため、パッケージ化されていない拡張機能として読み込みます。
+
+### 1. リポジトリを clone
 
 ```powershell
 git clone https://github.com/pealsha/x-follow-review.git
 ```
 
-Chromeで:
+### 2. Chrome に読み込む
 
 1. `chrome://extensions/` を開く
-2. 「デベロッパー モード」をON
-3. 「パッケージ化されていない拡張機能を読み込む」
-4. cloneした `x-follow-review` フォルダを選択
-5. Xのタブを再読み込み
+2. 「デベロッパー モード」を ON
+3. 「パッケージ化されていない拡張機能を読み込む」を選択
+4. clone した `x-follow-review` フォルダを指定
+5. X のタブを再読み込み
 
-以後の更新は:
+## 使い方
+
+1. X にログインする
+2. `https://x.com/<username>/following` を開く
+3. `Review Mode` を押す
+4. 左の Following 一覧からユーザーを選ぶ
+5. 右側で投稿・Bookmarks・Lists などを確認する
+
+初回はデータ取得に時間がかかる場合があります。2 回目以降は保存済みキャッシュを先に表示します。
+
+## 更新
+
+リポジトリを更新した後、Chrome 側でも拡張機能を再読み込みします。
 
 ```powershell
 cd C:\Users\perus\Documents\x-follow-review
 git pull
 ```
 
-その後、`chrome://extensions/` で拡張を再読み込みし、Xタブも再読み込みします。
+その後:
 
-## GraphQL診断機能
+1. `chrome://extensions/` で X Follow Review を再読み込み
+2. 開いている X タブも再読み込み
 
-拡張機能アイコンを押すと、X Webが使用したGraphQL operation・queryId・レスポンス構造を確認する診断画面を開けます。
+MAIN world 側の処理が変わった更新では、新しい X タブを開き直す方が確実です。
 
-これは開発・X仕様変更時の調査用です。通常のReview Mode利用では手動でBookmarksやListsページを開く必要はありません。
+## 保存するデータとプライバシー
 
-## プライバシー上の挙動
+高速表示のため、Following、Bookmarks、Lists、Media など Review Mode に必要なキャッシュを `chrome.storage.local` に保存します。
 
-- Authorizationヘッダー値を `chrome.storage` に保存しません
-- Cookie本文を保存しません
-- CSRFトークン値を保存しません
-- Review Mode用の認証ヘッダーはページ内メモリだけで利用します
-- 診断ログでは認証ヘッダーの存在有無のみ記録します
-- Review用のFollowing / Bookmarks / Lists / ListMembers / Mediaキャッシュは `chrome.storage.local` に保存します
-- queryIdは認証情報ではないため、再探索を減らす目的でX originのlocalStorageに保存します
+一方、次の認証情報は extension storage に保存しません。
 
-Xの内部GraphQLは非公開仕様のため、operation名・variables・feature flags等は将来変更される可能性があります。
+- Authorization ヘッダーの値
+- Cookie 本文
+- CSRF トークン
+
+X との認証済み通信に必要な情報は、X ページ内のメモリだけで扱います。
+
+## 制限事項
+
+- X の公式 API ではなく、X Web が内部で使っている GraphQL を利用しています
+- X の仕様変更により突然動作しなくなる可能性があります
+- 現在は Chrome での利用を前提としています
+- 初回同期や強制再同期では、Following / Bookmarks / Lists の量に応じて時間がかかります
+
+このプロジェクトは X Corp. 公式の拡張機能ではありません。
+
+## 開発者向け
+
+内部構成、GraphQL、キャッシュ、MAIN / ISOLATED world の役割分担などは [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) にまとめています。
+
+拡張機能アイコンから開ける GraphQL 診断画面は、X の仕様変更時の調査用です。通常利用では開く必要はありません。
+
+## バグ報告
+
+不具合を報告する場合は、可能であれば次の情報を添えてください。
+
+- 発生した操作
+- 表示されたエラー
+- X Follow Review のバージョン
+- 再読み込みや強制再同期で直るか
+
+GitHub Issues: https://github.com/pealsha/x-follow-review/issues
