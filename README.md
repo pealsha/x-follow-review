@@ -34,14 +34,23 @@ X の Following ページに `Review Mode` を追加します。Review Mode で�
 
 ## インストール
 
+### ZIP からインストールする
+
+1. [Releases](https://github.com/pealsha/x-follow-review/releases/latest) から `x-follow-review-v〇〇.zip` をダウンロードして展開する
+2. Chrome で `chrome://extensions/` を開く
+3. 右上の「デベロッパー モード」を ON にする
+4. 「パッケージ化されていない拡張機能を読み込む」を押し、展開した `x-follow-review` フォルダを選ぶ
+5. 開いている X のタブを再読み込みする
+
+展開したフォルダは、拡張機能を使っている間は削除せずに置いておいてください。
+
+### git でインストールする
+
 ```powershell
 git clone https://github.com/pealsha/x-follow-review.git
 ```
 
-1. Chrome で `chrome://extensions/` を開く
-2. 右上の「デベロッパー モード」を ON にする
-3. 「パッケージ化されていない拡張機能を読み込む」を押し、clone した `x-follow-review` フォルダを選ぶ
-4. 開いている X のタブを再読み込みする
+その後、上の 2〜5 と同じ手順で、clone した `x-follow-review` フォルダを読み込みます。
 
 ## 使い方
 
@@ -57,6 +66,16 @@ X の画面で直接リストを編集した後などは、Review Mode 上部の
 - `キャッシュ初期化`: この拡張が保存したデータをすべて消して、最初から取得し直します
 
 ## 新しいバージョンへの更新
+
+### ZIP でインストールした場合
+
+1. [Releases](https://github.com/pealsha/x-follow-review/releases/latest) から新しい ZIP をダウンロードして展開する
+2. 前の `x-follow-review` フォルダの中身を、新しいフォルダの中身で置き換える
+3. `chrome://extensions/` で X Follow Review を再読み込みし、X のタブを閉じて開き直す
+
+同じ場所のフォルダを置き換えると、保存済みのデータもそのまま使えます。
+
+### git でインストールした場合
 
 ```powershell
 cd x-follow-review
