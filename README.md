@@ -26,28 +26,38 @@ X の Following ページに `Review Mode` を追加します。Review Mode で�
 
 ## 注意事項
 
-- 現在は Chrome での利用を前提としています。Chrome Web Store では配布していません。
+- 現在は Chrome での利用を前提としています。
 - この拡張は現在ベータ版です。X の非公開 Web API を利用しているため、X 側の仕様変更で一時的に動作しなくなる可能性があります。
 - このプロジェクトは X Corp. 公式の拡張機能ではありません。
-- 初回は、Following・Bookmarks・Lists の量に応じて読み込みに時間がかかります。2 回目以降は保存済みのデータから先に表示します。
 - 取得したデータはブラウザ内（`chrome.storage.local`）に保存します。Cookie やトークンなどの認証情報は保存しません。
 
 ## インストール
+
+現在は Chrome Web Store では配布していないため、パッケージ化されていない拡張機能として読み込みます。
+
+### 1. リポジトリを clone
 
 ```powershell
 git clone https://github.com/pealsha/x-follow-review.git
 ```
 
-1. Chrome で `chrome://extensions/` を開く
-2. 右上の「デベロッパー モード」を ON にする
-3. 「パッケージ化されていない拡張機能を読み込む」を押し、clone した `x-follow-review` フォルダを選ぶ
-4. 開いている X のタブを再読み込みする
+### 2. Chrome に読み込む
+
+1. `chrome://extensions/` を開く
+2. 「デベロッパー モード」を ON
+3. 「パッケージ化されていない拡張機能を読み込む」を選択
+4. clone した `x-follow-review` フォルダを指定
+5. X のタブを再読み込み
 
 ## 使い方
 
-1. X にログインした状態で `https://x.com/<自分のユーザー名>/following` を開く
-2. `Review Mode` を押す
-3. 左の一覧からユーザーを選択する
+1. X にログインする
+2. `https://x.com/<username>/following` を開く
+3. `Review Mode` を押す
+4. 左の Following 一覧からユーザーを選ぶ
+5. 右側で投稿・Bookmarks・Lists などを確認する
+
+初回はデータ取得に時間がかかる場合があります。2 回目以降は保存済みキャッシュを先に表示します。
 
 ## 表示を最新の状態にしたいとき
 
