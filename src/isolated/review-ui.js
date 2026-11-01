@@ -318,7 +318,8 @@
   }
 
   function applyTheme() {
-    if (!host) return;
+    // On a full reload this runs at document_start, before <body> exists; scheduleLayout retries later.
+    if (!host || !document.body) return;
     const bg = getComputedStyle(document.body).backgroundColor || 'rgb(0,0,0)';
     const match = bg.match(/rgba?\((\d+)[, ]+\s*(\d+)[, ]+\s*(\d+)/);
     const lum = match ? (Number(match[1]) * 299 + Number(match[2]) * 587 + Number(match[3]) * 114) / 1000 : 0;
