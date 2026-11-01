@@ -1,6 +1,6 @@
 # Architecture
 
-この文書は X Follow Review の内部構成とデータ取得方式をまとめた開発者向け資料です。
+この文書は Hn X Follow Review の内部構成とデータ取得方式をまとめた開発者向け資料です。
 
 README は利用者がインストールして使い始めるための情報に絞り、実装詳細はここで扱います。
 
@@ -12,7 +12,7 @@ Chrome Manifest V3 の content script を、X ページと同じ JavaScript worl
 
 X のページセッションと同じ環境で動き、X Web が利用している内部 GraphQL と通信します。
 
-主なファイル:
+主なファイル（`src/main/`）:
 
 - `graphql-bootstrap.js`: GraphQL operation / queryId の早期捕捉
 - `page-hook.js`: X Web の通信観測
@@ -26,7 +26,7 @@ X のページセッションと同じ環境で動き、X Web が利用してい
 
 UI、Chrome extension storage、MAIN world とのメッセージングを担当します。
 
-主なファイル:
+主なファイル（`src/isolated/`）:
 
 - `bridge.js`: ページ側との bridge
 - `review-ui.js`: Review Mode の UI

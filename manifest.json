@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "X Follow Review",
+  "name": "Hn X Follow Review",
   "version": "0.10.0",
   "description": "Review X follows with cache-first direct GraphQL synchronization.",
   "permissions": ["storage", "webRequest"],
@@ -11,23 +11,23 @@
     "https://abs.twimg.com/*"
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "src/background.js"
   },
   "action": {
-    "default_title": "Open X Follow Review diagnostics"
+    "default_title": "Open Hn X Follow Review diagnostics"
   },
-  "options_page": "probe.html",
+  "options_page": "src/probe/probe.html",
   "content_scripts": [
     {
       "matches": ["https://x.com/*", "https://twitter.com/*"],
       "js": [
-        "graphql-bootstrap.js",
-        "page-hook.js",
-        "relationship-capture.js",
-        "graphql-page.js",
-        "graphql-xhr.js",
-        "actions-page.js",
-        "cache-control-page.js"
+        "src/main/graphql-bootstrap.js",
+        "src/main/page-hook.js",
+        "src/main/relationship-capture.js",
+        "src/main/graphql-page.js",
+        "src/main/graphql-xhr.js",
+        "src/main/actions-page.js",
+        "src/main/cache-control-page.js"
       ],
       "run_at": "document_start",
       "world": "MAIN"
@@ -35,13 +35,13 @@
     {
       "matches": ["https://x.com/*", "https://twitter.com/*"],
       "js": [
-        "bridge.js",
-        "review-ui.js",
-        "graphql-client.js",
-        "ui-metadata.js",
-        "relationship-client.js",
-        "followback-ui.js",
-        "sync-controls.js"
+        "src/isolated/bridge.js",
+        "src/isolated/review-ui.js",
+        "src/isolated/graphql-client.js",
+        "src/isolated/ui-metadata.js",
+        "src/isolated/relationship-client.js",
+        "src/isolated/followback-ui.js",
+        "src/isolated/sync-controls.js"
       ],
       "run_at": "document_start",
       "world": "ISOLATED"
