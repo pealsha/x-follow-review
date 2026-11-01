@@ -14,10 +14,11 @@ X のページセッションと同じ環境で動き、X Web が利用してい
 
 主なファイル（`src/main/`）:
 
+- `graphql-response.js`: 再帰探索、User / Tweet / List の正規化、cursor 抽出。`window.__xfrGraphqlResponse` に公開する、フックを持たない通常 script
 - `graphql-bootstrap.js`: GraphQL operation / queryId の早期捕捉
 - `page-hook.js`: X Web の通信観測
 - `relationship-capture.js`: follow-back 関係情報の捕捉
-- `graphql-page.js`: GraphQL adapter
+- `graphql-page.js`: queryId 管理、通信、ページ巡回、同期と action の振り分け
 - `graphql-xhr.js`: XHR から認証済み GraphQL ヘッダーをページ内メモリへ捕捉
 - `actions-page.js`: フォロー解除などの操作
 - `cache-control-page.js`: 強制再同期・キャッシュ初期化時のページ側処理
@@ -28,13 +29,35 @@ UI、Chrome extension storage、MAIN world とのメッセージングを担当�
 
 主なファイル（`src/isolated/`）:
 
-- `bridge.js`: ページ側との bridge
+- `shared.js`: storage キー、メッセージマーカー、ホスト ID、ユーザー索引の正規化。`window.__xfrIsolatedShared` を初期化
+- `probe-bridge.js`: ページ側の診断観測を background へ転送
+- `review-styles.js`: Review Mode の CSS 文字列を同じ共有名前空間へ登録。Shadow DOM への挿入は `review-ui.js` が担当
 - `review-ui.js`: Review Mode の UI
 - `graphql-client.js`: 同期制御とキャッシュ管理
 - `ui-metadata.js`: 一覧の補助表示
 - `relationship-client.js`: follow-back 情報の保存
 - `followback-ui.js`: follow-back 状態の表示
 - `sync-controls.js`: 強制再同期・キャッシュ初期化 UI
+
+### その他と検証
+
+- `src/background.js`: 診断画面を開く、診断イベントの保存、webRequest の観測
+- `src/probe/probe.html` / `probe.js`: operation ごとの診断情報の表示・コピー・消去
+- `biome.json`: 整形・lint。未宣言変数を検査し、`chrome` の global は background・ISOLATED・probe のみに許可
+- `scripts/check-project.js`: manifest の参照ファイルの存在と、`src/` の全 JS の構文検査
+- `tests/graphql-response.test.js`: 通信せず、通常 script を評価して手書き fixture で解析結果を検査
+
+`bun run check` で Biome、ファイル・構文検査、`bun test` を順に実行します。Biome の `--error-on-warnings` は警告も失敗として扱う指定です。Biome は固定済みの 2.6.3 を使用し、Markdown は検査・整形の対象外です。
+
+構文検査は Bun から導入済みの Node を起動し、`node:vm` の `Script` で通常 script として解析します。ソースは実行しません。Bun の `new Script()` だけでは構文エラーを検出しなかったため、Node を使います。検証環境には Bun と Node が必要です。
+
+### 読み込み順と world の境界
+
+manifest の配列が入口です。MAIN は `graphql-response` を先に置き、既存の `graphql-bootstrap → page-hook → relationship-capture → graphql-page → graphql-xhr → actions-page → cache-control-page` の相対順を維持します。各フックは直前の fetch / XHR を保持するため、並び替えは通信の観測経路も変えます。
+
+ISOLATED は `shared → probe-bridge → review-styles → review-ui → graphql-client → ui-metadata → relationship-client → followback-ui → sync-controls` です。`review-ui` は以前と同じ5キーを取得・監視し、同期・初期化側は9キーを扱います。共有定義の追加でこの範囲を広げないようにします。
+
+content script は ES module へ変えず、同じ world の名前空間を参照します。world 間の共有は従来どおり `window.postMessage` です。Lists の bootstrap 側の補完は通常の List 正規化と戻り値が違うため、そのまま残しています。
 
 ## データフロー
 

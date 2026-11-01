@@ -1,0 +1,11 @@
+{
+	"name": "hn-x-follow-review",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"check": "biome check --error-on-warnings && bun scripts/check-project.js && bun test"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.6.3"
+	}
+}

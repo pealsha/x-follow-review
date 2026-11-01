@@ -1,0 +1,28 @@
+{
+	"$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+	"files": {
+		"includes": ["**", "!**/*.md", "!docs"]
+	},
+	"formatter": {
+		"lineEnding": "auto"
+	},
+	"linter": {
+		"rules": {
+			"correctness": {
+				"noUndeclaredVariables": "error"
+			}
+		}
+	},
+	"overrides": [
+		{
+			"includes": [
+				"src/background.js",
+				"src/isolated/**/*.js",
+				"src/probe/**/*.js"
+			],
+			"javascript": {
+				"globals": ["chrome"]
+			}
+		}
+	]
+}

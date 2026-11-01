@@ -1,50 +1,53 @@
 {
-  "manifest_version": 3,
-  "name": "Hn X Follow Review",
-  "version": "0.10.0",
-  "description": "Review X follows with cache-first direct GraphQL synchronization.",
-  "permissions": ["storage", "webRequest"],
-  "host_permissions": [
-    "https://x.com/*",
-    "https://twitter.com/*",
-    "https://api.x.com/*",
-    "https://abs.twimg.com/*"
-  ],
-  "background": {
-    "service_worker": "src/background.js"
-  },
-  "action": {
-    "default_title": "Open Hn X Follow Review diagnostics"
-  },
-  "options_page": "src/probe/probe.html",
-  "content_scripts": [
-    {
-      "matches": ["https://x.com/*", "https://twitter.com/*"],
-      "js": [
-        "src/main/graphql-bootstrap.js",
-        "src/main/page-hook.js",
-        "src/main/relationship-capture.js",
-        "src/main/graphql-page.js",
-        "src/main/graphql-xhr.js",
-        "src/main/actions-page.js",
-        "src/main/cache-control-page.js"
-      ],
-      "run_at": "document_start",
-      "world": "MAIN"
-    },
-    {
-      "matches": ["https://x.com/*", "https://twitter.com/*"],
-      "js": [
-        "src/isolated/bridge.js",
-        "src/isolated/review-ui.js",
-        "src/isolated/graphql-client.js",
-        "src/isolated/ui-metadata.js",
-        "src/isolated/relationship-client.js",
-        "src/isolated/followback-ui.js",
-        "src/isolated/sync-controls.js"
-      ],
-      "run_at": "document_start",
-      "world": "ISOLATED"
-    }
-  ]
+	"manifest_version": 3,
+	"name": "Hn X Follow Review",
+	"version": "0.10.0",
+	"description": "Review X follows with cache-first direct GraphQL synchronization.",
+	"permissions": ["storage", "webRequest"],
+	"host_permissions": [
+		"https://x.com/*",
+		"https://twitter.com/*",
+		"https://api.x.com/*",
+		"https://abs.twimg.com/*"
+	],
+	"background": {
+		"service_worker": "src/background.js"
+	},
+	"action": {
+		"default_title": "Open Hn X Follow Review diagnostics"
+	},
+	"options_page": "src/probe/probe.html",
+	"content_scripts": [
+		{
+			"matches": ["https://x.com/*", "https://twitter.com/*"],
+			"js": [
+				"src/main/graphql-response.js",
+				"src/main/graphql-bootstrap.js",
+				"src/main/page-hook.js",
+				"src/main/relationship-capture.js",
+				"src/main/graphql-page.js",
+				"src/main/graphql-xhr.js",
+				"src/main/actions-page.js",
+				"src/main/cache-control-page.js"
+			],
+			"run_at": "document_start",
+			"world": "MAIN"
+		},
+		{
+			"matches": ["https://x.com/*", "https://twitter.com/*"],
+			"js": [
+				"src/isolated/shared.js",
+				"src/isolated/probe-bridge.js",
+				"src/isolated/review-styles.js",
+				"src/isolated/review-ui.js",
+				"src/isolated/graphql-client.js",
+				"src/isolated/ui-metadata.js",
+				"src/isolated/relationship-client.js",
+				"src/isolated/followback-ui.js",
+				"src/isolated/sync-controls.js"
+			],
+			"run_at": "document_start",
+			"world": "ISOLATED"
+		}
+	]
 }
